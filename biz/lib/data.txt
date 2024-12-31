@@ -1,0 +1,2 @@
+Order Statuss ---- 'Completed','Pending','Cancelled','OnHold','Rejected'
+Payment Statuss --- 'Pending','Paid','Overdue'

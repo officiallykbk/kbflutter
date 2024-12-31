@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "828763240741",
+    "project_id": "bizorganiza",
+    "storage_bucket": "bizorganiza.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:828763240741:android:35fd74361488c718b442cc",
+        "android_client_info": {
+          "package_name": "com.example.biz"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA6jhec7xN07I62a59NfCiiAsd8zrHl5RY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
