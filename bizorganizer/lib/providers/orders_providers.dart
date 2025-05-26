@@ -1,194 +1,192 @@
-import 'package:bizorganizer/main.dart';
-import 'package:bizorganizer/models/trips.dart';
+import 'package:bizorganizer/main.dart'; // Assuming 'supabase' client is available from here
+import 'package:bizorganizer/models/cargo_job.dart'; 
+import 'package:bizorganizer/models/job_history_entry.dart'; // Import for JobHistoryEntry
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class TripsProvider extends ChangeNotifier {
+class CargoJobProvider extends ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  // Fields for trips and statuses
   String? _image;
-  List<Map<String, dynamic>> _trips = [];
-  List<Map<String, dynamic>> _completedTrips = [];
-  List<Map<String, dynamic>> _pendingTrips = [];
-  List<Map<String, dynamic>> _cancelledTrips = [];
-  List<Map<String, dynamic>> _onHoldTrips = [];
-  List<Map<String, dynamic>> _rejectedTrips = [];
-  List<Map<String, dynamic>> _paidTrips = [];
-  List<Map<String, dynamic>> _pendingPayments = [];
-  List<Map<String, dynamic>> _overduePayments = [];
+  List<Map<String, dynamic>> _jobs = [];
+  List<Map<String, dynamic>> _completedJobs = [];
+  List<Map<String, dynamic>> _pendingJobs = [];
+  List<Map<String, dynamic>> _cancelledJobs = [];
+  List<Map<String, dynamic>> _onHoldJobs = [];
+  List<Map<String, dynamic>> _rejectedJobs = [];
+  List<Map<String, dynamic>> _paidJobs = [];
+  List<Map<String, dynamic>> _pendingPaymentJobs = [];
+  List<Map<String, dynamic>> _overduePaymentJobs = [];
 
-  // Getters for trips and image
   String? get image => _image;
-  List<Map<String, dynamic>> get trips => _trips;
-  List<Map<String, dynamic>> get completedTrips => _completedTrips;
-  List<Map<String, dynamic>> get pendingTrips => _pendingTrips;
-  List<Map<String, dynamic>> get cancelledTrips => _cancelledTrips;
-  List<Map<String, dynamic>> get onHoldTrips => _onHoldTrips;
-  List<Map<String, dynamic>> get rejectedTrips => _rejectedTrips;
-  List<Map<String, dynamic>> get paidTrips => _paidTrips;
-  List<Map<String, dynamic>> get pendingPayments => _pendingPayments;
-  List<Map<String, dynamic>> get overduePayments => _overduePayments;
+  List<Map<String, dynamic>> get jobs => _jobs;
+  List<Map<String, dynamic>> get completedJobs => _completedJobs;
+  List<Map<String, dynamic>> get pendingJobs => _pendingJobs;
+  List<Map<String, dynamic>> get cancelledJobs => _cancelledJobs;
+  List<Map<String, dynamic>> get onHoldJobs => _onHoldJobs;
+  List<Map<String, dynamic>> get rejectedJobs => _rejectedJobs;
+  List<Map<String, dynamic>> get paidJobs => _paidJobs;
+  List<Map<String, dynamic>> get pendingPayments => _pendingPaymentJobs;
+  List<Map<String, dynamic>> get overduePayments => _overduePaymentJobs;
 
-  // Fetch all trip data and categorize based on status
-  Future<void> fetchTripsData() async {
+  Future<void> fetchJobsData() async {
     try {
-      // Fetch all trip data from Supabase
-      // DateFormat format = DateFormat('d-mm-yyyy');
       final response = await _supabase
-          .from('trip')
+          .from('cargo_jobs')
           .select()
-          .order('created_at', ascending: true);
+          .order('created_at', ascending: false);
 
-      List<Map<String, dynamic>> tripsData =
-          (response as List).cast<Map<String, dynamic>>();
+      List<Map<String, dynamic>> jobsData = (response as List).cast<Map<String, dynamic>>();
+      _jobs = jobsData;
 
-      // for (var data in tripsData) {
-      //   format.parse(data['date']);
-      // }
-      // tripsData.sort((a, b) => a['date'].compareTo(b['date']));
+      _completedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == 'completed').toList();
+      _pendingJobs = jobsData.where((job) => 
+        job['delivery_status']?.toString().toLowerCase() == 'pending' || 
+        job['delivery_status']?.toString().toLowerCase() == 'in progress'
+      ).toList();
+      _cancelledJobs = jobsData.where((job) => 
+        job['delivery_status']?.toString().toLowerCase() == 'cancelled' ||
+        job['delivery_status']?.toString().toLowerCase() == 'refunded'
+      ).toList();
+      _onHoldJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == 'onhold').toList();
+      _rejectedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == 'rejected').toList();
 
-      // tripsData.sort((a, b) {
-      //   DateTime dateA = format.parse(a['date']);
-      //   DateTime dateB = format.parse(b['date']);
-      //   return dateA.compareTo(dateB); // Ascending order
-      // });
-
-      _trips = tripsData;
-      print(_trips);
-
-      // Filter based on Order Status
-      _completedTrips = tripsData
-          .where((trip) => trip['orderStatus'] == 'completed')
-          .toList();
-      _pendingTrips =
-          tripsData.where((trip) => trip['orderStatus'] == 'pending').toList();
-      _cancelledTrips = tripsData
-          .where((trip) => trip['orderStatus'] == 'cancelled')
-          .toList();
-      _onHoldTrips =
-          tripsData.where((trip) => trip['orderStatus'] == 'onhold').toList();
-      _rejectedTrips =
-          tripsData.where((trip) => trip['orderStatus'] == 'rejected').toList();
-
-      // Filter based on Payment Status
-      _paidTrips =
-          tripsData.where((trip) => trip['paymentStatus'] == 'paid').toList();
-      _pendingPayments = tripsData
-          .where((trip) => trip['paymentStatus'] == 'pending')
-          .toList();
-      _overduePayments = tripsData
-          .where((trip) => trip['paymentStatus'] == 'overdue')
-          .toList();
+      _paidJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == 'paid').toList();
+      _pendingPaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == 'pending').toList();
+      _overduePaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == 'overdue').toList();
 
       notifyListeners();
     } catch (e) {
-      print('Error fetching trips data: $e');
+      print('Error fetching jobs data: $e');
     }
   }
 
-  Future<void> addTrip(Trip trip) async {
+  Future<void> addJob(CargoJob job) async {
     try {
-      // Save the customer data first
-      await _supabase.from('customer').upsert({
-        'clientName': trip.clientName,
-        'contactNumber': trip.contactNumber,
-      });
-
-      // Save the trip data
-      await _supabase.from('trip').insert(trip.toJson());
-      fetchTripsData();
-    } catch (e) {
-      print('Error adding trip: $e');
-    }
-  }
-
-  // Remove a trip by id
-  Future<void> removeTrip(String id) async {
-    try {
-      await _supabase.from('trip').delete().eq('id', id);
-      _trips.removeWhere((trip) => trip['id'] == id);
-      notifyListeners();
-      print('Trip removed successfully');
-    } catch (e) {
-      print('Error removing trip: $e');
-    }
-  }
-
-  // Edit a trip by id
-  Future<void> editTrip(String id, Map<String, dynamic> updatedTrip) async {
-    try {
-      await _supabase.from('trip').update(updatedTrip).eq('id', id);
-      await fetchTripsData();
-      print('Trip updated successfully');
-    } catch (e) {
-      print('Error updating trip: $e');
-    }
-  }
-
-  void updateOrderStatus(int tripId, String newStatus) async {
-    try {
-      final tripIndex = _trips.indexWhere((trip) => trip['id'] == tripId);
-      if (tripIndex != -1) {
-        _trips[tripIndex]['orderStatus'] = newStatus;
-
-        // Update on Supabase
-        final response = await supabase
-            .from('trip')
-            .update({'orderStatus': newStatus})
-            .eq('id', tripId)
-            .select();
-        print('responsezz $response');
-
-        notifyListeners();
+      if (job.shipperName != null && job.shipperName!.isNotEmpty) {
+        await _supabase.from('customer').upsert({'clientName': job.shipperName});
       }
+      await _supabase.from('cargo_jobs').insert(job.toJson());
+      await fetchJobsData();
     } catch (e) {
-      print('Errorzzz in changing orderStatus $e');
+      print('Error adding job: $e');
     }
   }
 
-  void updatePaymentStatus(int tripId, String newStatus) async {
+  Future<void> removeJob(int jobId) async {
     try {
-      final tripIndex = _trips.indexWhere((trip) => trip['id'] == tripId);
-      if (tripIndex != -1) {
-        _trips[tripIndex]['paymentStatus'] = newStatus;
-
-        // Update on Supabase
-        final response = await supabase
-            .from('trip')
-            .update({'paymentStatus': newStatus})
-            .eq('id', tripId)
-            .select();
-
-        print('responsezz $response');
-
-        notifyListeners();
-      }
+      await _supabase.from('cargo_jobs').delete().eq('id', jobId);
+      await fetchJobsData(); 
+      print('Job removed successfully');
     } catch (e) {
-      print('Errorzzz in changing paymentStatus $e');
+      print('Error removing job: $e');
     }
   }
 
-  // Set image reference and notify listeners
+  Future<void> editJob(int jobId, CargoJob updatedJob) async {
+    try {
+      // Fetch current job to compare for history logging
+      final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
+      final currentJob = CargoJob.fromJson(currentJobData);
+
+      await _supabase.from('cargo_jobs').update(updatedJob.toJson()).eq('id', jobId);
+      
+      // Log changes to history
+      // This is a simplified example; a more robust solution would iterate over changed fields.
+      // For now, let's assume we know which fields are editable and might change.
+      // A more generic approach would compare currentJob and updatedJob field by field.
+
+      if (currentJob.deliveryStatus != updatedJob.deliveryStatus && updatedJob.deliveryStatus != null) {
+        await addJobHistoryRecord(jobId, 'delivery_status', currentJob.deliveryStatus ?? '', updatedJob.deliveryStatus!, updatedJob.createdBy ?? 'system');
+      }
+      if (currentJob.paymentStatus != updatedJob.paymentStatus && updatedJob.paymentStatus != null) {
+         await addJobHistoryRecord(jobId, 'payment_status', currentJob.paymentStatus ?? '', updatedJob.paymentStatus!, updatedJob.createdBy ?? 'system');
+      }
+      if (currentJob.agreedPrice != updatedJob.agreedPrice && updatedJob.agreedPrice != null) {
+         await addJobHistoryRecord(jobId, 'agreed_price', currentJob.agreedPrice?.toString() ?? '', updatedJob.agreedPrice!.toString(), updatedJob.createdBy ?? 'system');
+      }
+      // Add more field comparisons as needed...
+
+      await fetchJobsData();
+      print('Job updated successfully');
+    } catch (e) {
+      print('Error updating job: $e');
+    }
+  }
+
+  Future<void> updateJobDeliveryStatus(int jobId, String newStatus) async {
+    try {
+      final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
+      final oldStatus = currentJobData['delivery_status'] as String?;
+      final userId = _supabase.auth.currentUser?.id ?? 'system'; // Get current user or default to system
+
+      await _supabase.from('cargo_jobs').update({'delivery_status': newStatus}).eq('id', jobId);
+      
+      if (oldStatus != newStatus) {
+        await addJobHistoryRecord(jobId, 'delivery_status', oldStatus ?? '', newStatus, userId);
+      }
+      await fetchJobsData();
+      print('Job delivery status updated successfully for job $jobId');
+    } catch (e) {
+      print('Error changing job delivery_status: $e');
+    }
+  }
+
+  Future<void> updateJobPaymentStatus(int jobId, String newStatus) async {
+    try {
+      final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
+      final oldStatus = currentJobData['payment_status'] as String?;
+      final userId = _supabase.auth.currentUser?.id ?? 'system';
+
+      await _supabase.from('cargo_jobs').update({'payment_status': newStatus}).eq('id', jobId);
+
+      if (oldStatus != newStatus) {
+         await addJobHistoryRecord(jobId, 'payment_status', oldStatus ?? '', newStatus, userId);
+      }
+      await fetchJobsData();
+      print('Job payment status updated successfully for job $jobId');
+    } catch (e) {
+      print('Error changing job payment_status: $e');
+    }
+  }
+
   void addImage(String imageRef) {
     _image = imageRef;
     notifyListeners();
   }
 
-  // // Sort trip by criteria
-  // void sortTrips(String criteria) {
-  //   _trips.sort((a, b) => a[criteria].compareTo(b[criteria]));
-  //   notifyListeners();
-  // }
+  // New method to fetch job history
+  Future<List<JobHistoryEntry>> fetchJobHistory(int jobId) async {
+    try {
+      final response = await _supabase
+          .from('job_history')
+          .select()
+          .eq('job_id', jobId)
+          .order('changed_at', ascending: false); // Newest first
 
-  // // Filter trip by order status
-  // List<Map<String, dynamic>> filterTripsByStatus(String status) {
-  //   return _allTrips.where((trip) => trip['orderStatus'] == status).toList();
-  // }
+      final List<dynamic> data = response as List<dynamic>;
+      return data.map((json) => JobHistoryEntry.fromJson(json as Map<String, dynamic>)).toList();
+    } catch (e) {
+      print('Error fetching job history for job $jobId: $e');
+      return []; // Return empty list on error
+    }
+  }
 
-  // // Filter trip by payment status
-  // List<Map<String, dynamic>> filterTripsByPaymentStatus(String status) {
-  //   return _allTrips.where((trip) => trip['paymentStatus'] == status).toList();
-  // }
+  // New simpler method to add a job history record
+  Future<void> addJobHistoryRecord(int jobId, String fieldChanged, String oldValue, String newValue, String changedBy) async {
+    try {
+      final historyEntry = JobHistoryEntry(
+        jobId: jobId,
+        fieldChanged: fieldChanged,
+        oldValue: oldValue,
+        newValue: newValue,
+        changedAt: DateTime.now().toIso8601String(), // Set current time
+        changedBy: changedBy,
+      );
+      await _supabase.from('job_history').insert(historyEntry.toJson());
+      print('Job history entry added successfully for job $jobId: $fieldChanged');
+    } catch (e) {
+      print('Error adding job history entry for job $jobId: $e');
+    }
+  }
 }

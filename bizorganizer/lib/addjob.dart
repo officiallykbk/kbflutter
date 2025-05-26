@@ -1,13 +1,13 @@
 import 'package:bizorganizer/main.dart';
 import 'package:bizorganizer/models/reusables.dart';
-import 'package:bizorganizer/models/trips.dart';
-import 'package:bizorganizer/providers/orders_providers.dart';
+import 'package:bizorganizer/models/cargo_job.dart'; // Updated import
+import 'package:bizorganizer/providers/orders_providers.dart'; 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart'; 
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
 
-// US States List (as per fallback plan)
 const List<String> usStates = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
   "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
@@ -21,53 +21,87 @@ const List<String> usStates = [
   "West Virginia", "Wisconsin", "Wyoming"
 ];
 
-class AddTrip extends StatefulWidget {
-  const AddTrip({Key? key}) : super(key: key);
+// Delivery Status Options
+const List<String> deliveryStatusOptions = [
+  'pending', 'in progress', 'completed', 'cancelled', 'onhold', 'rejected'
+];
+
+
+class AddJob extends StatefulWidget { // Renamed class
+  final CargoJob? job; // To pass for editing
+  final bool isEditing;
+
+  const AddJob({Key? key, this.job, this.isEditing = false}) : super(key: key); // Updated constructor
 
   @override
-  State<AddTrip> createState() => _AddTripState();
+  State<AddJob> createState() => _AddJobState(); 
 }
 
-class _AddTripState extends State<AddTrip> {
+class _AddJobState extends State<AddJob> { 
   final _formKey = GlobalKey<FormState>();
-  DateTime _selectedDate = DateTime.now();
-  String _selectedPaymentStatus = 'Pending'; // Default payment status
+  
+  // Dates
+  DateTime? _pickupDate;
+  DateTime? _estimatedDeliveryDate;
+  DateTime? _actualDeliveryDate;
+
+  String _selectedPaymentStatus = 'pending'; 
+  String _selectedDeliveryStatus = 'pending'; // Default delivery status
   String? _imageUrl;
   bool _isPickingImage = false;
 
-  // TextEditingControllers moved into state
-  late TextEditingController _clientController;
-  late TextEditingController _clientNumberController;
-  late TextEditingController _clientEmailController;
-  late TextEditingController _amountController;
-  late TextEditingController _descriptionController;
-  late TextEditingController _pictureNameController; // For naming the receipt image
+  late TextEditingController _shipperNameController; // Renamed from _clientController
+  // _clientNumberController and _clientEmailController removed as per CargoJob model
+  late TextEditingController _agreedPriceController; // Renamed from _amountController
+  late TextEditingController _notesController; // Renamed from _descriptionController
+  late TextEditingController _pictureNameController; 
 
-  // State variables for dropdowns
-  String? _selectedOriginState;
-  String? _selectedDestinationState;
+  String? _selectedPickupLocationState; // Renamed from _selectedOriginState
+  String? _selectedDropoffLocationState; // Renamed from _selectedDestinationState
 
   final picker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    _clientController = TextEditingController();
-    _clientNumberController = TextEditingController();
-    _clientEmailController = TextEditingController();
-    _amountController = TextEditingController();
-    _descriptionController = TextEditingController();
+    _shipperNameController = TextEditingController();
+    _agreedPriceController = TextEditingController();
+    _notesController = TextEditingController();
     _pictureNameController = TextEditingController();
+
+    if (widget.isEditing && widget.job != null) {
+      final job = widget.job!;
+      _shipperNameController.text = job.shipperName ?? '';
+      _agreedPriceController.text = job.agreedPrice?.toString() ?? '';
+      _notesController.text = job.notes ?? '';
+      _imageUrl = job.receiptUrl;
+      
+      if (job.pickupDate != null && job.pickupDate!.isNotEmpty) {
+        _pickupDate = DateTime.tryParse(job.pickupDate!);
+      }
+      if (job.estimatedDeliveryDate != null && job.estimatedDeliveryDate!.isNotEmpty) {
+        _estimatedDeliveryDate = DateTime.tryParse(job.estimatedDeliveryDate!);
+      }
+      if (job.actualDeliveryDate != null && job.actualDeliveryDate!.isNotEmpty) {
+        _actualDeliveryDate = DateTime.tryParse(job.actualDeliveryDate!);
+      }
+
+      _selectedPickupLocationState = usStates.contains(job.pickupLocation) ? job.pickupLocation : null;
+      _selectedDropoffLocationState = usStates.contains(job.dropoffLocation) ? job.dropoffLocation : null;
+      
+      _selectedPaymentStatus = job.paymentStatus?.toLowerCase() ?? 'pending';
+      _selectedDeliveryStatus = job.deliveryStatus?.toLowerCase() ?? 'pending';
+    } else {
+      // Set default for pickupDate if not editing
+      _pickupDate = DateTime.now();
+    }
   }
 
   @override
   void dispose() {
-    // Dispose of the controllers when the widget is disposed
-    _clientController.dispose();
-    _clientNumberController.dispose();
-    _clientEmailController.dispose();
-    _amountController.dispose();
-    _descriptionController.dispose();
+    _shipperNameController.dispose();
+    _agreedPriceController.dispose();
+    _notesController.dispose();
     _pictureNameController.dispose();
     super.dispose();
   }
@@ -115,24 +149,30 @@ class _AddTripState extends State<AddTrip> {
   }
 
   void _clearFields() {
-    _clientController.clear();
-    _clientNumberController.clear();
-    _clientEmailController.clear();
-    _amountController.clear();
-    _descriptionController.clear();
-    _pictureNameController.clear(); // Clear the picture name as well
+    _shipperNameController.clear();
+    _agreedPriceController.clear();
+    _notesController.clear();
+    _pictureNameController.clear(); 
     if (mounted) {
       setState(() {
-        _imageUrl = null; // Changed from '' to null
-        _selectedDate = DateTime.now();
-        _selectedPaymentStatus = 'Pending';
-        _selectedOriginState = null;
-        _selectedDestinationState = null;
+        _imageUrl = null; 
+        _pickupDate = DateTime.now(); // Reset to now for new entries
+        _estimatedDeliveryDate = null;
+        _actualDeliveryDate = null;
+        _selectedPaymentStatus = 'pending';
+        _selectedDeliveryStatus = 'pending';
+        _selectedPickupLocationState = null;
+        _selectedDropoffLocationState = null;
       });
     }
   }
 
-  Future<void> _addTrip() async {
+  Future<void> _saveOrUpdateJob() async { 
+    if (!_formKey.currentState!.validate()) {
+      CustomSnackBar.show(context, 'Please fix errors in the form.', Icons.error, backgroundColor: Colors.orange);
+      return;
+    }
+
     String capitalizeFirst(String input) {
       if (input.isEmpty) return input;
       return input[0].toUpperCase() + input.substring(1).toLowerCase();
@@ -146,46 +186,51 @@ class _AddTripState extends State<AddTrip> {
           .join(' ');
     }
 
-    final trip = Trip(
-      clientName: capitalizeEachWord(_clientController.text),
-      contactNumber: _clientNumberController.text,
-      receipt: _imageUrl ?? '', // Use null-aware operator
-      date: "${_selectedDate.day}-${_selectedDate.month}-${_selectedDate.year}",
-      origin: _selectedOriginState ?? '', // Use selected state
-      destination: _selectedDestinationState ?? '', // Use selected state
-      amount: double.tryParse(_amountController.text) ?? 0.0,
-      paymentStatus: _selectedPaymentStatus.toLowerCase(),
-      description: _descriptionController.text,
-      // orderStatus is defaulted in the Trip model if not provided
+    final jobData = CargoJob(
+      id: widget.isEditing ? widget.job!.id : null, // Set ID if editing
+      shipperName: capitalizeEachWord(_shipperNameController.text),
+      receiptUrl: _imageUrl, 
+      pickupDate: _pickupDate != null ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(_pickupDate!) : null,
+      estimatedDeliveryDate: _estimatedDeliveryDate != null ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(_estimatedDeliveryDate!) : null,
+      actualDeliveryDate: _actualDeliveryDate != null ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(_actualDeliveryDate!) : null,
+      pickupLocation: _selectedPickupLocationState, 
+      dropoffLocation: _selectedDropoffLocationState, 
+      agreedPrice: double.tryParse(_agreedPriceController.text) ?? 0.0, 
+      paymentStatus: _selectedPaymentStatus.toLowerCase(), 
+      deliveryStatus: _selectedDeliveryStatus.toLowerCase(),
+      notes: _notesController.text,
+      // created_by and updated_at will be handled by Supabase or provider logic
     );
 
-    if (mounted) {
-      await context.read<TripsProvider>().addTrip(trip);
-      CustomSnackBar.show(context, 'Trip Recorded', Icons.check); // Corrected typo
-    }
-
-    print('clearing fields');
-    // Delay slightly to allow snackbar to show before form reset potentially rebuilds widget
-    Future.delayed(const Duration(milliseconds: 100), () {
-      if (mounted) {
-        _formKey.currentState?.reset(); // Reset form fields visually
-        _clearFields(); // Clear controllers and state variables
+    try {
+      final provider = context.read<CargoJobProvider>();
+      if (widget.isEditing) {
+        await provider.editJob(jobData.id!, jobData); // Pass jobData directly
+        if(mounted) CustomSnackBar.show(context, 'Job updated successfully', Icons.check);
+      } else {
+        await provider.addJob(jobData);
+        if(mounted) CustomSnackBar.show(context, 'Job added successfully', Icons.check);
       }
-    });
+      if(mounted) Navigator.of(context).pop(true); // Pop screen on success, pass true
+    } catch (e) {
+      print('Error saving/updating job: $e');
+      if(mounted) CustomSnackBar.show(context, 'Failed to save job: $e', Icons.error, backgroundColor: Colors.red);
+    }
   }
 
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212), // Dark background
+      backgroundColor: const Color(0xFF121212), 
       body: CustomScrollView(
         slivers: [
-          const SliverAppBar(
-            title: Text("Create New Trip"),
+          SliverAppBar(
+            title: Text(widget.isEditing ? 'Edit Job' : 'Create New Job'), 
             centerTitle: true,
-            backgroundColor: Color(0xFF1F1F1F), // Darker app bar
+            backgroundColor: const Color(0xFF1F1F1F), 
             elevation: 0,
+            pinned: true,
           ),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -236,22 +281,22 @@ class _AddTripState extends State<AddTrip> {
                                         ),
                                       ]));
                         },
-                        leading: _isPickingImage ? CircularProgressIndicator() : const Icon(Icons.add_a_photo_sharp),
+                        leading: _isPickingImage ? const CircularProgressIndicator() : const Icon(Icons.add_a_photo_sharp),
                         title: Text(
-                          _imageUrl == null || _imageUrl!.isEmpty ? 'Pick receipt image' : _imageUrl!,
+                          _imageUrl == null || _imageUrl!.isEmpty ? 'Pick receipt image' : (_imageUrl!.length > 30 ? '...${_imageUrl!.substring(_imageUrl!.length - 27)}' : _imageUrl!),
                           style: const TextStyle(color: Colors.white70),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(height: 16),
-                      TextInputField( // Reusable custom widget
-                        controller: _clientController,
-                        label: 'Client/CompanyName',
+                      TextInputField( 
+                        controller: _shipperNameController,
+                        label: 'Shipper Name', 
                         icon: Icons.person,
                         inputType: TextInputType.name,
                         validator: (value) {
                           if (value == null || value.isEmpty) {
-                            return 'Please enter the client or company name';
+                            return 'Please enter shipper name';
                           } else if (value.length < 3) {
                             return 'Name must be at least 3 characters';
                           }
@@ -259,102 +304,74 @@ class _AddTripState extends State<AddTrip> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      TextInputField(
-                        controller: _clientNumberController,
-                        label: 'Client phone number',
-                        icon: Icons.phone_android_outlined,
-                        inputType: TextInputType.phone,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter a phone number';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextInputField(
-                        controller: _clientEmailController,
-                        label: 'Client email address',
-                        icon: Icons.email,
-                        inputType: TextInputType.emailAddress,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Field can not be empty';
-                          }
-                          final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
-                          if (!emailRegex.hasMatch(value)) {
-                            return 'Invalid Email';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      CalendarSelectWidget(
-                        selectedDate: _selectedDate,
+                      // Client Number and Email fields are removed as they are not in CargoJob
+                      
+                      // Pickup Date
+                      DateSelectWidget(
+                        label: "Pickup Date",
+                        selectedDate: _pickupDate,
                         onDateSelected: (date) {
                           setState(() {
-                            _selectedDate = date;
+                            _pickupDate = date;
                           });
                         },
                       ),
                       const SizedBox(height: 16),
-                      // Origin Dropdown
-                      DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: 'Origin State',
-                          prefixIcon: Icon(Icons.place_rounded, color: Colors.white),
-                          border: OutlineInputBorder(),
-                          filled: true,
-                          fillColor: Colors.grey.shade800,
-                          labelStyle: TextStyle(color: Colors.white70),
-                        ),
-                        dropdownColor: Colors.grey.shade800,
-                        style: TextStyle(color: Colors.white),
-                        value: _selectedOriginState,
-                        items: usStates.map((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          );
-                        }).toList(),
-                        onChanged: (String? newValue) {
+                      // Estimated Delivery Date
+                      DateSelectWidget(
+                        label: "Est. Delivery Date (Optional)",
+                        selectedDate: _estimatedDeliveryDate,
+                        onDateSelected: (date) {
                           setState(() {
-                            _selectedOriginState = newValue;
+                            _estimatedDeliveryDate = date;
                           });
                         },
-                        validator: (value) => value == null ? 'Please select an origin state' : null,
+                        isOptional: true,
                       ),
                       const SizedBox(height: 16),
-                      // Destination Dropdown
-                      DropdownButtonFormField<String>(
-                        decoration: InputDecoration(
-                          labelText: 'Destination State',
-                           prefixIcon: Icon(Icons.place_rounded, color: Colors.white),
-                          border: OutlineInputBorder(),
-                          filled: true,
-                          fillColor: Colors.grey.shade800,
-                          labelStyle: TextStyle(color: Colors.white70),
-                        ),
-                        dropdownColor: Colors.grey.shade800,
-                        style: TextStyle(color: Colors.white),
-                        value: _selectedDestinationState,
-                        items: usStates.map((String value) {
-                          return DropdownMenuItem<String>(
-                            value: value,
-                            child: Text(value),
-                          );
-                        }).toList(),
-                        onChanged: (String? newValue) {
+                      // Actual Delivery Date
+                      DateSelectWidget(
+                        label: "Actual Delivery Date (Optional)",
+                        selectedDate: _actualDeliveryDate,
+                        onDateSelected: (date) {
                           setState(() {
-                            _selectedDestinationState = newValue;
+                            _actualDeliveryDate = date;
                           });
                         },
-                        validator: (value) => value == null ? 'Please select a destination state' : null,
+                         isOptional: true,
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        decoration: _inputDecoration('Pickup Location (State)', Icons.place_rounded),
+                        dropdownColor: Colors.grey.shade800,
+                        style: const TextStyle(color: Colors.white),
+                        value: _selectedPickupLocationState,
+                        items: usStates.map((String value) {
+                          return DropdownMenuItem<String>(value: value, child: Text(value));
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          setState(() { _selectedPickupLocationState = newValue; });
+                        },
+                        validator: (value) => value == null ? 'Please select a pickup state' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        decoration: _inputDecoration('Dropoff Location (State)', Icons.place_rounded),
+                        dropdownColor: Colors.grey.shade800,
+                        style: const TextStyle(color: Colors.white),
+                        value: _selectedDropoffLocationState,
+                        items: usStates.map((String value) {
+                          return DropdownMenuItem<String>(value: value, child: Text(value));
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          setState(() { _selectedDropoffLocationState = newValue; });
+                        },
+                        validator: (value) => value == null ? 'Please select a dropoff state' : null,
                       ),
                       const SizedBox(height: 16),
                       TextInputField(
-                        controller: _amountController,
-                        label: 'Amount',
+                        controller: _agreedPriceController,
+                        label: 'Agreed Price', 
                         icon: Icons.attach_money_outlined,
                         inputType: TextInputType.number,
                         validator: (value) {
@@ -368,39 +385,47 @@ class _AddTripState extends State<AddTrip> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      PaymentStatusWidget(
+                      // Delivery Status Dropdown
+                      DropdownButtonFormField<String>(
+                        decoration: _inputDecoration('Delivery Status', Icons.local_shipping),
+                        dropdownColor: Colors.grey.shade800,
+                        style: const TextStyle(color: Colors.white),
+                        value: _selectedDeliveryStatus,
+                        items: deliveryStatusOptions.map((String value) {
+                          return DropdownMenuItem<String>(value: value, child: Text(value.toUpperCase()));
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          setState(() { _selectedDeliveryStatus = newValue ?? 'pending'; });
+                        },
+                        validator: (value) => value == null ? 'Please select a delivery status' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      PaymentStatusWidget( // This is already a custom widget
                         selectedStatus: _selectedPaymentStatus,
                         onStatusSelected: (status) {
-                           setState(() {
-                             _selectedPaymentStatus = status;
-                           });
+                           setState(() { _selectedPaymentStatus = status; });
                         },
                       ),
                       const SizedBox(height: 16),
                       TextInputField(
-                        controller: _descriptionController,
-                        label: 'Description (Optional)',
+                        controller: _notesController,
+                        label: 'Notes (Optional)', 
                         icon: Icons.description,
                         maxlines: 5,
                         inputType: TextInputType.multiline,
-                        // Validator is optional for description
                       ),
                       const SizedBox(height: 32),
                       ElevatedButton(
-                        onPressed: () async {
-                          if (_formKey.currentState!.validate()) {
-                            await _addTrip();
-                          }
-                        },
+                        onPressed: _saveOrUpdateJob, // Updated method call
                         style: ElevatedButton.styleFrom(
                             minimumSize: const Size(double.infinity, 50),
                             backgroundColor: Colors.amber,
-                            foregroundColor: Colors.black, // Text color for amber button
+                            foregroundColor: Colors.black, 
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        child: const Text("Save Trip", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                        child: Text(widget.isEditing ? 'Update Job' : 'Save Job', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)), 
                       ),
-                       const SizedBox(height: 20), // Padding at the bottom
+                       const SizedBox(height: 20), 
                     ],
                   ),
                 )
@@ -411,9 +436,21 @@ class _AddTripState extends State<AddTrip> {
       ),
     );
   }
+
+  InputDecoration _inputDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: Colors.white70),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.amber)),
+      filled: true,
+      fillColor: Colors.grey.shade800,
+      labelStyle: const TextStyle(color: Colors.white70),
+    );
+  }
 }
 
-// Text Input Field Widget (remains mostly the same, adapted for dark theme)
 class TextInputField extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -438,7 +475,7 @@ class TextInputField extends StatelessWidget {
       maxLines: maxlines,
       controller: controller,
       keyboardType: inputType,
-      style: const TextStyle(color: Colors.white), // Text input color
+      style: const TextStyle(color: Colors.white), 
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.white70),
@@ -447,32 +484,36 @@ class TextInputField extends StatelessWidget {
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.amber)),
         filled: true,
-        fillColor: Colors.grey.shade800, // Darker field background
+        fillColor: Colors.grey.shade800, 
       ),
       validator: validator,
     );
   }
 }
 
-// Calendar Selection Widget (adapted for state management from parent)
-class CalendarSelectWidget extends StatelessWidget {
-  final DateTime selectedDate;
+// Generic Date Selection Widget
+class DateSelectWidget extends StatelessWidget {
+  final String label;
+  final DateTime? selectedDate;
   final ValueChanged<DateTime> onDateSelected;
+  final bool isOptional;
 
-  const CalendarSelectWidget({
+  const DateSelectWidget({
     Key? key,
+    required this.label,
     required this.selectedDate,
     required this.onDateSelected,
+    this.isOptional = false,
   }) : super(key: key);
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: selectedDate,
-      firstDate: DateTime(2015, 8),
+      initialDate: selectedDate ?? DateTime.now(),
+      firstDate: DateTime(2000), // Adjust as needed
       lastDate: DateTime(2101),
     );
-    if (picked != null && picked != selectedDate) {
+    if (picked != null) {
       onDateSelected(picked);
     }
   }
@@ -482,11 +523,14 @@ class CalendarSelectWidget extends StatelessWidget {
     return ListTile(
       leading: const Icon(Icons.calendar_today, color: Colors.purpleAccent),
       title: Text(
-        "Date: ${selectedDate.day}-${selectedDate.month}-${selectedDate.year}",
+        "$label: ${selectedDate != null ? DateFormat('MMMM d, yyyy').format(selectedDate!) : 'Not Set'}",
         style: const TextStyle(fontSize: 16, color: Colors.white70),
       ),
+      trailing: isOptional && selectedDate != null 
+        ? IconButton(icon: Icon(Icons.clear, color: Colors.redAccent), onPressed: () => onDateSelected(DateTime(0))) // Special value to clear
+        : null,
       onTap: () => _selectDate(context),
-      tileColor: Colors.grey.shade800,
+      tileColor: Colors.grey.shade800, 
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(color: Colors.grey.shade700),
@@ -495,7 +539,7 @@ class CalendarSelectWidget extends StatelessWidget {
   }
 }
 
-// Payment Status Selection Widget (adapted for state management from parent)
+
 class PaymentStatusWidget extends StatelessWidget {
   final String selectedStatus;
   final ValueChanged<String> onStatusSelected;
@@ -510,7 +554,7 @@ class PaymentStatusWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       title: const Text("Payment Status", style: TextStyle(fontSize: 16, color: Colors.white70)),
-      contentPadding: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+      contentPadding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10), 
       tileColor: Colors.grey.shade800,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
@@ -518,10 +562,10 @@ class PaymentStatusWidget extends StatelessWidget {
       ),
       subtitle: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: ['Paid', 'Pending', 'Overdue'].map((status) {
-          bool isSelected = selectedStatus == status;
+        children: ['pending', 'paid', 'overdue', 'refunded'].map((status) { // Added 'refunded'
+          bool isSelected = selectedStatus.toLowerCase() == status; // Ensure case-insensitive comparison
           return ChoiceChip(
-            label: Text(status, style: TextStyle(color: isSelected ? Colors.black : Colors.white70)),
+            label: Text(status.toUpperCase(), style: TextStyle(color: isSelected ? Colors.black : Colors.white70)),
             selected: isSelected,
             onSelected: (selected) {
               if (selected) onStatusSelected(status);
