@@ -17,6 +17,13 @@ class _DashboardState extends State<Dashboard> {
   final ScrollController _scrollController = ScrollController();
   bool _isFabVisible = true;
 
+  // State variables for trip counts
+  int _totalTripsCount = 0;
+  int _pendingTripsCount = 0;
+  int _completedTripsCount = 0;
+  int _cancelledTripsCount = 0; 
+  int _overdueTripsCount = 0;   
+
   @override
   void initState() {
     super.initState();
@@ -68,7 +75,14 @@ class _DashboardState extends State<Dashboard> {
               return Center(child: Text('No trips available.'));
             }
 
-            final trips = snapshot.data!.reversed.toList();
+            final trips = snapshot.data!; // No longer reversing here
+
+            // Calculate counts once
+            _totalTripsCount = trips.length;
+            _pendingTripsCount = trips.where((trip) => trip['orderStatus']?.toString().toLowerCase() == 'pending' || trip['orderStatus']?.toString().toLowerCase() == 'in progress').length;
+            _completedTripsCount = trips.where((trip) => trip['orderStatus']?.toString().toLowerCase() == 'completed').length;
+            _cancelledTripsCount = trips.where((trip) => trip['orderStatus']?.toString().toLowerCase() == 'cancelled' || trip['orderStatus']?.toString().toLowerCase() == 'refunded').length;
+            _overdueTripsCount = trips.where((trip) => trip['orderStatus']?.toString().toLowerCase() == 'overdue' || trip['orderStatus']?.toString().toLowerCase() == 'onhold').length;
 
             return CustomScrollView(
               controller: _scrollController,
@@ -78,7 +92,7 @@ class _DashboardState extends State<Dashboard> {
                     Container(
                       margin: const EdgeInsets.all(16.0),
                       height: MediaQuery.of(context).size.height * 0.3,
-                      color: Colors.grey,
+                      color: Colors.grey, // Placeholder color
                     ),
                     Positioned(
                       top: 20,
@@ -88,7 +102,7 @@ class _DashboardState extends State<Dashboard> {
                           onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute(
                                   builder: (_) => TripStatsPage())),
-                          icon: Icon(Icons.output_rounded)),
+                          icon: const Icon(Icons.output_rounded)), // Added const
                     )
                   ]),
                 ),
@@ -101,28 +115,15 @@ class _DashboardState extends State<Dashboard> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            _buildSummaryCard(
-                                context, 'Total Trips', trips.length),
-                            _buildSummaryCard(
-                                context,
-                                'Pending Trips',
-                                trips
-                                    .where((trip) =>
-                                        trip['orderStatus']
-                                            .toString()
-                                            .toLowerCase() ==
-                                        'pending')
-                                    .length),
-                            _buildSummaryCard(
-                                context,
-                                'Completed Trips',
-                                trips
-                                    .where((trip) =>
-                                        trip['orderStatus']
-                                            .toString()
-                                            .toLowerCase() ==
-                                        'completed')
-                                    .length),
+                            _buildSummaryCard(context, 'Total Trips', _totalTripsCount, Colors.blue),
+                            const SizedBox(width: 8), // Added for spacing
+                            _buildSummaryCard(context, 'Pending', _pendingTripsCount, Colors.orange),
+                            const SizedBox(width: 8),
+                            _buildSummaryCard(context, 'Completed', _completedTripsCount, Colors.green),
+                            const SizedBox(width: 8),
+                            _buildSummaryCard(context, 'Cancelled', _cancelledTripsCount, Colors.red),
+                             const SizedBox(width: 8),
+                            _buildSummaryCard(context, 'Overdue', _overdueTripsCount, Colors.purple),
                           ],
                         ),
                       ),
@@ -134,11 +135,11 @@ class _DashboardState extends State<Dashboard> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
-                      (context, index) {
+                      (BuildContext context, int index) { // Added BuildContext type
                         final trip = trips[index];
                         return _buildTripCard(context, trip);
                       },
-                      childCount: trips.length,
+                      childCount: _totalTripsCount, // Use pre-calculated count
                     ),
                   ),
                 ),
@@ -169,31 +170,35 @@ class _DashboardState extends State<Dashboard> {
   // Get stream of trips from Supabase
   Stream<List<Map<String, dynamic>>> _getTripsStream(SupabaseClient supabase) {
     final stream = supabase
-        .from('trip') // Replace with your Supabase table name
-        .stream(primaryKey: ['id']) // Assuming `id` is the primary key
+        .from('trip') 
+        .stream(primaryKey: ['id'])
+        .order('id', ascending: false) // Server-side ordering
         .map((rows) => rows.map((row) => row as Map<String, dynamic>).toList());
 
     return stream;
   }
 
   // Summary card widget
-  Widget _buildSummaryCard(BuildContext context, String title, int count) {
+  Widget _buildSummaryCard(BuildContext context, String title, int count, Color color) {
     return Card(
-      color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
+      elevation: 2, // Added slight elevation
+      color: color.withOpacity(0.15), // Use passed color with opacity
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), // Slightly larger radius
+      child: Container( // Added container for fixed width and padding
+        width: 120, // Fixed width for summary cards
+        padding: const EdgeInsets.all(12.0), // Adjusted padding
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center, // Center content
           children: [
-            Text(title, style: Theme.of(context).textTheme.bodyMedium),
+            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: color, fontWeight: FontWeight.bold), textAlign: TextAlign.center,), // Use titleMedium
             const SizedBox(height: 8),
             Text(
               count.toString(),
-              style: TextStyle(
-                fontSize: 20,
+              style: TextStyle( // Keep specific style for count
+                fontSize: 22, // Slightly larger count
                 fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
+                color: color, // Use passed color
               ),
             ),
           ],
@@ -217,32 +222,35 @@ class _DashboardState extends State<Dashboard> {
           );
         },
         leading: Icon(
-          Icons.fire_truck,
-          color: Colors.blueAccent,
-          size: 30,
+          Icons.local_shipping, // Changed icon
+          color: Theme.of(context).colorScheme.primary, // Use theme color
+          size: 28, // Adjusted size
         ),
         title: Text(
           trip['clientName'],
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: const TextStyle(fontWeight: FontWeight.bold), // Added const
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Date: ${trip['date']}"),
-            Text("Status: ${trip['orderStatus']}",
+            Text("Date: ${trip['date'] ?? 'N/A'}"), // Added null check
+            Text("Status: ${trip['orderStatus'] ?? 'N/A'}", // Added null check
                 style: TextStyle(
-                  color: _getStatusColor(trip['orderStatus']),
+                  color: _getStatusColor(trip['orderStatus']?.toString()), // Added toString
                   fontWeight: FontWeight.bold,
                 )),
-            Text("Payment Status: ${trip['paymentStatus']}"),
+            Text("Payment: ${trip['paymentStatus'] ?? 'N/A'}"), // Added null check and changed label
           ],
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end, // Align text to end
           children: [
-            Icon(Icons.attach_money, color: Colors.green),
-            Text("\$${trip['amount'].toString()}",
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17)),
+            Text(
+              "\$${trip['amount']?.toStringAsFixed(2) ?? '0.00'}", // Added null check and formatting
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green), // Added const and color
+            ),
+            // Removed icon for cleaner look, amount is prominent enough
           ],
         ),
       ),

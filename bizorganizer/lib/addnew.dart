@@ -5,22 +5,21 @@ import 'package:bizorganizer/providers/orders_providers.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-
 import 'package:provider/provider.dart';
 
-final _formKey = GlobalKey<FormState>();
-DateTime selectedDate = DateTime.now();
-String selectedStatus = 'Pending';
-// Define controllers for each text field
-final TextEditingController clientController = TextEditingController();
-final TextEditingController clientNumberController = TextEditingController();
-final TextEditingController clientEmailController = TextEditingController();
-final TextEditingController originController = TextEditingController();
-final TextEditingController destinationController = TextEditingController();
-final TextEditingController amountController = TextEditingController();
-final TextEditingController descriptionController = TextEditingController();
-final TextEditingController pictureName = TextEditingController();
-String imageUrl = '';
+// US States List (as per fallback plan)
+const List<String> usStates = [
+  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
+  "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
+  "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana",
+  "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota",
+  "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada",
+  "New Hampshire", "New Jersey", "New Mexico", "New York",
+  "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon",
+  "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
+  "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
+  "West Virginia", "Wisconsin", "Wyoming"
+];
 
 class AddTrip extends StatefulWidget {
   const AddTrip({Key? key}) : super(key: key);
@@ -30,63 +29,163 @@ class AddTrip extends StatefulWidget {
 }
 
 class _AddTripState extends State<AddTrip> {
-  // @override
-  // void dispose() {
-  //   // Dispose of the controllers when the widget is disposed
-  //   clientController.dispose();
-  //   clientNumberController.dispose();
-  //   clientEmailController.dispose();
-  //   destinationController.dispose();
-  //   amountController.dispose();
-  //   descriptionController.dispose();
-  //   pictureName.dispose();
-  //   super.dispose();
-  // }
+  final _formKey = GlobalKey<FormState>();
+  DateTime _selectedDate = DateTime.now();
+  String _selectedPaymentStatus = 'Pending'; // Default payment status
+  String? _imageUrl;
+  bool _isPickingImage = false;
+
+  // TextEditingControllers moved into state
+  late TextEditingController _clientController;
+  late TextEditingController _clientNumberController;
+  late TextEditingController _clientEmailController;
+  late TextEditingController _amountController;
+  late TextEditingController _descriptionController;
+  late TextEditingController _pictureNameController; // For naming the receipt image
+
+  // State variables for dropdowns
+  String? _selectedOriginState;
+  String? _selectedDestinationState;
 
   final picker = ImagePicker();
 
-  Future<void> getImageGallery(ImageSource imgSource, String imgName) async {
+  @override
+  void initState() {
+    super.initState();
+    _clientController = TextEditingController();
+    _clientNumberController = TextEditingController();
+    _clientEmailController = TextEditingController();
+    _amountController = TextEditingController();
+    _descriptionController = TextEditingController();
+    _pictureNameController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    // Dispose of the controllers when the widget is disposed
+    _clientController.dispose();
+    _clientNumberController.dispose();
+    _clientEmailController.dispose();
+    _amountController.dispose();
+    _descriptionController.dispose();
+    _pictureNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _getImageGallery(ImageSource imgSource, String imgName) async {
+    if (!mounted) return;
+    setState(() {
+      _isPickingImage = true;
+    });
     try {
       final pickedFile = await picker.pickImage(source: imgSource);
-
       if (pickedFile != null) {
-        await uploadImageToSupabase(File(pickedFile.path), imgName);
+        await _uploadImageToSupabase(File(pickedFile.path), imgName);
       }
     } catch (e) {
       print('Failed to pick image: $e');
+      if (mounted) {
+        CustomSnackBar.show(context, 'Failed to pick image: $e', Icons.error, backgroundColor: Colors.red);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPickingImage = false;
+        });
+      }
     }
   }
 
-  Future uploadImageToSupabase(File image, String imgName) async {
+  Future<void> _uploadImageToSupabase(File image, String imgName) async {
     try {
-      final String path =
-          'images/$imgName--${DateTime.now().toString().substring(0, 10)}.png';
-
-      // Upload the image to Supabase storage bucket
+      final String path = 'images/$imgName--${DateTime.now().toIso8601String()}.png';
       await supabase.storage.from('BizBucket').upload(path, image);
+      
+      if (!mounted) return;
       CustomSnackBar.show(context, 'Image Uploaded', Icons.check);
-
-      // Retrieve the public URL of the uploaded image
       setState(() {
-        imageUrl = supabase.storage.from('BizBucket').getPublicUrl(path);
+        _imageUrl = supabase.storage.from('BizBucket').getPublicUrl(path);
       });
     } catch (e) {
       print('Failed to upload image: $e');
-      CustomSnackBar.show(context, 'Failed to Upload Image', Icons.error,
-          backgroundColor: Colors.red);
+      if (mounted) {
+         CustomSnackBar.show(context, 'Failed to Upload Image', Icons.error, backgroundColor: Colors.red);
+      }
     }
   }
+
+  void _clearFields() {
+    _clientController.clear();
+    _clientNumberController.clear();
+    _clientEmailController.clear();
+    _amountController.clear();
+    _descriptionController.clear();
+    _pictureNameController.clear(); // Clear the picture name as well
+    if (mounted) {
+      setState(() {
+        _imageUrl = null; // Changed from '' to null
+        _selectedDate = DateTime.now();
+        _selectedPaymentStatus = 'Pending';
+        _selectedOriginState = null;
+        _selectedDestinationState = null;
+      });
+    }
+  }
+
+  Future<void> _addTrip() async {
+    String capitalizeFirst(String input) {
+      if (input.isEmpty) return input;
+      return input[0].toUpperCase() + input.substring(1).toLowerCase();
+    }
+
+    String capitalizeEachWord(String input) {
+      if (input.isEmpty) return input;
+      return input
+          .split(' ')
+          .map((word) => word.isNotEmpty ? capitalizeFirst(word) : word)
+          .join(' ');
+    }
+
+    final trip = Trip(
+      clientName: capitalizeEachWord(_clientController.text),
+      contactNumber: _clientNumberController.text,
+      receipt: _imageUrl ?? '', // Use null-aware operator
+      date: "${_selectedDate.day}-${_selectedDate.month}-${_selectedDate.year}",
+      origin: _selectedOriginState ?? '', // Use selected state
+      destination: _selectedDestinationState ?? '', // Use selected state
+      amount: double.tryParse(_amountController.text) ?? 0.0,
+      paymentStatus: _selectedPaymentStatus.toLowerCase(),
+      description: _descriptionController.text,
+      // orderStatus is defaulted in the Trip model if not provided
+    );
+
+    if (mounted) {
+      await context.read<TripsProvider>().addTrip(trip);
+      CustomSnackBar.show(context, 'Trip Recorded', Icons.check); // Corrected typo
+    }
+
+    print('clearing fields');
+    // Delay slightly to allow snackbar to show before form reset potentially rebuilds widget
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        _formKey.currentState?.reset(); // Reset form fields visually
+        _clearFields(); // Clear controllers and state variables
+      }
+    });
+  }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: const Color(0xFF121212), // Dark background
       body: CustomScrollView(
         slivers: [
           const SliverAppBar(
             title: Text("Create New Trip"),
             centerTitle: true,
-            // pinned: true,
+            backgroundColor: Color(0xFF1F1F1F), // Darker app bar
+            elevation: 0,
           ),
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -97,7 +196,7 @@ class _AddTripState extends State<AddTrip> {
                   child: Column(
                     children: [
                       ListTile(
-                        shape: Border.all(color: Colors.grey),
+                        shape: RoundedRectangleBorder(side: BorderSide(color: Colors.grey.shade700), borderRadius: BorderRadius.circular(8)),
                         iconColor: Colors.white,
                         onTap: () {
                           showDialog(
@@ -105,67 +204,48 @@ class _AddTripState extends State<AddTrip> {
                               barrierDismissible: true,
                               builder: (context) => AlertDialog(
                                       title: TextFormField(
-                                        controller: pictureName,
+                                        controller: _pictureNameController,
                                         decoration: InputDecoration(
                                           labelText: 'Enter receipt Name',
                                           border: OutlineInputBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(10),
+                                            borderRadius: BorderRadius.circular(10),
                                           ),
                                         ),
                                         onFieldSubmitted: (value) async {
                                           Navigator.pop(context);
-                                          if (value != '' && value.isNotEmpty) {
-                                            await getImageGallery(
-                                                ImageSource.gallery, value);
+                                          if (value.isNotEmpty) {
+                                            await _getImageGallery(ImageSource.gallery, value);
                                           }
                                         },
                                         style: const TextStyle(fontSize: 18),
                                       ),
                                       content: const Text(
-                                        'Give it a name that can be easily referenced',
-                                        style: TextStyle(color: Colors.red),
+                                        'Give it a name that can be easily referenced.',
+                                        style: TextStyle(color: Colors.grey),
                                       ),
                                       actions: [
                                         ElevatedButton(
                                           onPressed: () async {
                                             Navigator.pop(context);
-                                            final String enteredName =
-                                                pictureName.text;
-
-                                            if (enteredName != '' &&
-                                                enteredName.isNotEmpty) {
-                                              await getImageGallery(
-                                                  ImageSource.gallery,
-                                                  enteredName);
+                                            final String enteredName = _pictureNameController.text;
+                                            if (enteredName.isNotEmpty) {
+                                              await _getImageGallery(ImageSource.gallery, enteredName);
                                             }
                                           },
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: Colors.blue,
-                                            foregroundColor: Colors.white,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                            ),
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 20, vertical: 10),
-                                          ),
-                                          child: const Text(
-                                            "Get Image",
-                                            style: TextStyle(fontSize: 16),
-                                          ),
+                                          child: const Text("Get Image"),
                                         ),
                                       ]));
                         },
-                        leading: const Icon(Icons.add_a_photo_sharp),
+                        leading: _isPickingImage ? CircularProgressIndicator() : const Icon(Icons.add_a_photo_sharp),
                         title: Text(
-                          imageUrl == '' ? 'Pick receipt image' : imageUrl,
-                          style: const TextStyle(color: Colors.white),
+                          _imageUrl == null || _imageUrl!.isEmpty ? 'Pick receipt image' : _imageUrl!,
+                          style: const TextStyle(color: Colors.white70),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       const SizedBox(height: 16),
-                      TextInputField(
-                        controller: clientController,
+                      TextInputField( // Reusable custom widget
+                        controller: _clientController,
                         label: 'Client/CompanyName',
                         icon: Icons.person,
                         inputType: TextInputType.name,
@@ -180,7 +260,7 @@ class _AddTripState extends State<AddTrip> {
                       ),
                       const SizedBox(height: 16),
                       TextInputField(
-                        controller: clientNumberController,
+                        controller: _clientNumberController,
                         label: 'Client phone number',
                         icon: Icons.phone_android_outlined,
                         inputType: TextInputType.phone,
@@ -188,105 +268,139 @@ class _AddTripState extends State<AddTrip> {
                           if (value == null || value.isEmpty) {
                             return 'Please enter a phone number';
                           }
-                          // else if (!(RegExp(
-                          //         r"^(?:\+1\s?)?(\d{3}|\(\d{3}\))[-.\s]?\d{3}[-.\s]?\d{4}$")
-                          //     .hasMatch(value))) {
-                          //   return 'This is not a valid US phone number';
-                          // }
                           return null;
                         },
                       ),
                       const SizedBox(height: 16),
                       TextInputField(
-                        controller: clientEmailController,
+                        controller: _clientEmailController,
                         label: 'Client email address',
                         icon: Icons.email,
                         inputType: TextInputType.emailAddress,
                         validator: (value) {
-                          if (value!.isEmpty) {
-                            return 'Field can not be empty';
-                          } else {
-                            bool isValidEmail(String email) {
-                              final emailRegex = RegExp(
-                                r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
-                              );
-                              return emailRegex.hasMatch(email);
-                            }
-
-                            if (isValidEmail(clientEmailController.text)) {
-                              return null;
-                            } else {
-                              return 'Invalid Email';
-                            }
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      const CalendarSelect(),
-                      const SizedBox(height: 16),
-                      TextInputField(
-                        controller: originController,
-                        label: 'Origin',
-                        icon: Icons.place_rounded,
-                        inputType: TextInputType.name,
-                        validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Field can not be empty';
-                          } else {
-                            return null;
                           }
+                          final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+                          if (!emailRegex.hasMatch(value)) {
+                            return 'Invalid Email';
+                          }
+                          return null;
                         },
                       ),
                       const SizedBox(height: 16),
-                      TextInputField(
-                        controller: destinationController,
-                        label: 'Destination',
-                        icon: Icons.place_rounded,
-                        inputType: TextInputType.name,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Field can not be empty';
-                          } else {
-                            return null;
-                          }
+                      CalendarSelectWidget(
+                        selectedDate: _selectedDate,
+                        onDateSelected: (date) {
+                          setState(() {
+                            _selectedDate = date;
+                          });
                         },
                       ),
                       const SizedBox(height: 16),
+                      // Origin Dropdown
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: 'Origin State',
+                          prefixIcon: Icon(Icons.place_rounded, color: Colors.white),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.grey.shade800,
+                          labelStyle: TextStyle(color: Colors.white70),
+                        ),
+                        dropdownColor: Colors.grey.shade800,
+                        style: TextStyle(color: Colors.white),
+                        value: _selectedOriginState,
+                        items: usStates.map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            _selectedOriginState = newValue;
+                          });
+                        },
+                        validator: (value) => value == null ? 'Please select an origin state' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      // Destination Dropdown
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(
+                          labelText: 'Destination State',
+                           prefixIcon: Icon(Icons.place_rounded, color: Colors.white),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.grey.shade800,
+                          labelStyle: TextStyle(color: Colors.white70),
+                        ),
+                        dropdownColor: Colors.grey.shade800,
+                        style: TextStyle(color: Colors.white),
+                        value: _selectedDestinationState,
+                        items: usStates.map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                        onChanged: (String? newValue) {
+                          setState(() {
+                            _selectedDestinationState = newValue;
+                          });
+                        },
+                        validator: (value) => value == null ? 'Please select a destination state' : null,
+                      ),
+                      const SizedBox(height: 16),
                       TextInputField(
-                        controller: amountController,
+                        controller: _amountController,
                         label: 'Amount',
                         icon: Icons.attach_money_outlined,
                         inputType: TextInputType.number,
                         validator: (value) {
-                          if (value!.isEmpty) {
+                          if (value == null || value.isEmpty) {
                             return 'Please enter an amount';
-                          } else if (!(RegExp(r'^\d+(\.\d+)?$')
-                              .hasMatch(value))) {
-                            return 'Amount can only be number';
-                          } else {
-                            return null;
                           }
+                          if (double.tryParse(value) == null) {
+                            return 'Amount can only be number';
+                          }
+                          return null;
                         },
                       ),
                       const SizedBox(height: 16),
-                      const PaymentStatus(),
+                      PaymentStatusWidget(
+                        selectedStatus: _selectedPaymentStatus,
+                        onStatusSelected: (status) {
+                           setState(() {
+                             _selectedPaymentStatus = status;
+                           });
+                        },
+                      ),
                       const SizedBox(height: 16),
                       TextInputField(
-                        controller: descriptionController,
-                        label: 'Description',
+                        controller: _descriptionController,
+                        label: 'Description (Optional)',
                         icon: Icons.description,
                         maxlines: 5,
-                        inputType: TextInputType.name,
-                        // validator: (value) {
-                        //   if (value == null || value.isEmpty) {
-                        //     return 'Field can not be empty';
-                        //   } else {
-                        //     return null;
-                        //   }
-                        // },
+                        inputType: TextInputType.multiline,
+                        // Validator is optional for description
                       ),
                       const SizedBox(height: 32),
-                      const SaveButton(),
+                      ElevatedButton(
+                        onPressed: () async {
+                          if (_formKey.currentState!.validate()) {
+                            await _addTrip();
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 50),
+                            backgroundColor: Colors.amber,
+                            foregroundColor: Colors.black, // Text color for amber button
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                        child: const Text("Save Trip", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      ),
+                       const SizedBox(height: 20), // Padding at the bottom
                     ],
                   ),
                 )
@@ -299,7 +413,7 @@ class _AddTripState extends State<AddTrip> {
   }
 }
 
-// Text Input Field Widget with personalized validation
+// Text Input Field Widget (remains mostly the same, adapted for dark theme)
 class TextInputField extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -324,26 +438,33 @@ class TextInputField extends StatelessWidget {
       maxLines: maxlines,
       controller: controller,
       keyboardType: inputType,
+      style: const TextStyle(color: Colors.white), // Text input color
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.white),
-        prefixIcon: Icon(icon, color: Colors.white),
-        border: const OutlineInputBorder(),
+        labelStyle: const TextStyle(color: Colors.white70),
+        prefixIcon: Icon(icon, color: Colors.white70),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.amber)),
+        filled: true,
+        fillColor: Colors.grey.shade800, // Darker field background
       ),
       validator: validator,
     );
   }
 }
 
-// Calendar Selection Widget
-class CalendarSelect extends StatefulWidget {
-  const CalendarSelect({Key? key}) : super(key: key);
+// Calendar Selection Widget (adapted for state management from parent)
+class CalendarSelectWidget extends StatelessWidget {
+  final DateTime selectedDate;
+  final ValueChanged<DateTime> onDateSelected;
 
-  @override
-  State<CalendarSelect> createState() => _CalendarSelectState();
-}
+  const CalendarSelectWidget({
+    Key? key,
+    required this.selectedDate,
+    required this.onDateSelected,
+  }) : super(key: key);
 
-class _CalendarSelectState extends State<CalendarSelect> {
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -352,145 +473,65 @@ class _CalendarSelectState extends State<CalendarSelect> {
       lastDate: DateTime(2101),
     );
     if (picked != null && picked != selectedDate) {
-      setState(() {
-        selectedDate = picked;
-      });
+      onDateSelected(picked);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: const Icon(
-        Icons.calendar_today,
-        color: Colors.purple,
-      ),
+      leading: const Icon(Icons.calendar_today, color: Colors.purpleAccent),
       title: Text(
         "Date: ${selectedDate.day}-${selectedDate.month}-${selectedDate.year}",
-        style: const TextStyle(fontSize: 16, color: Colors.black),
+        style: const TextStyle(fontSize: 16, color: Colors.white70),
       ),
       onTap: () => _selectDate(context),
-      tileColor: Colors.grey[200],
+      tileColor: Colors.grey.shade800,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: Colors.grey),
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: Colors.grey.shade700),
       ),
     );
   }
 }
 
-// Payment Status Selection Widget
-class PaymentStatus extends StatefulWidget {
-  const PaymentStatus({Key? key}) : super(key: key);
+// Payment Status Selection Widget (adapted for state management from parent)
+class PaymentStatusWidget extends StatelessWidget {
+  final String selectedStatus;
+  final ValueChanged<String> onStatusSelected;
 
-  @override
-  State<PaymentStatus> createState() => _PaymentStatusState();
-}
+  const PaymentStatusWidget({
+    Key? key,
+    required this.selectedStatus,
+    required this.onStatusSelected,
+  }) : super(key: key);
 
-class _PaymentStatusState extends State<PaymentStatus> {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      title: const Text("Payment Status",
-          style: TextStyle(fontSize: 16, color: Colors.black)),
+      title: const Text("Payment Status", style: TextStyle(fontSize: 16, color: Colors.white70)),
+      contentPadding: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
+      tileColor: Colors.grey.shade800,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: Colors.grey.shade700),
+      ),
       subtitle: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: ['Paid', 'Pending', 'Overdue'].map((status) {
+          bool isSelected = selectedStatus == status;
           return ChoiceChip(
-            label: Text(status),
-            selected: selectedStatus == status,
+            label: Text(status, style: TextStyle(color: isSelected ? Colors.black : Colors.white70)),
+            selected: isSelected,
             onSelected: (selected) {
-              setState(() {
-                if (selected) selectedStatus = status;
-              });
+              if (selected) onStatusSelected(status);
             },
+            selectedColor: Colors.amber,
+            backgroundColor: Colors.grey.shade700,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? Colors.amber : Colors.grey.shade600)),
           );
         }).toList(),
       ),
-      tileColor: Colors.grey[200],
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: const BorderSide(color: Colors.grey),
-      ),
-    );
-  }
-}
-
-// Save Button Widget
-class SaveButton extends StatefulWidget {
-  const SaveButton({Key? key}) : super(key: key);
-
-  @override
-  State<SaveButton> createState() => _SaveButtonState();
-}
-
-class _SaveButtonState extends State<SaveButton> {
-  // final tripModel = Provider.of<TripsProvider>(context);
-  void clearFields() {
-    clientController.clear();
-    clientNumberController.clear();
-    clientEmailController.clear();
-    destinationController.clear();
-    amountController.clear();
-    descriptionController.clear();
-    pictureName.clear();
-    setState(() {
-      imageUrl = '';
-    });
-  }
-
-  addTrip() {
-    String capitalizeFirst(String input) {
-      if (input.isEmpty) return input;
-      return input[0].toUpperCase() + input.substring(1).toLowerCase();
-    }
-
-    String capitalizeEachWord(String input) {
-      if (input.isEmpty) return input;
-      return input
-          .split(' ')
-          .map((word) => word.isNotEmpty ? capitalizeFirst(word) : word)
-          .join(' ');
-    }
-
-    final trip = Trip(
-      clientName: capitalizeEachWord(clientController.text),
-      contactNumber: clientNumberController.text,
-      receipt: imageUrl,
-      date: "${selectedDate.day}-${selectedDate.month}-${selectedDate.year}",
-      origin: capitalizeEachWord(originController.text),
-      destination: capitalizeEachWord(destinationController.text),
-      amount: double.parse(amountController.text),
-      paymentStatus: selectedStatus.toLowerCase(),
-      description: descriptionController.text,
-    );
-    context.read<TripsProvider>().addTrip(trip);
-
-    CustomSnackBar.show(context, 'Trip Recoded', Icons.check);
-
-    print('clearing fields');
-
-    Future.delayed(const Duration(milliseconds: 100), () {
-      setState(() {
-        _formKey.currentState?.reset();
-        clearFields();
-      });
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ElevatedButton(
-      onPressed: () async {
-        if (_formKey.currentState!.validate()) {
-          await addTrip();
-        }
-      },
-      style: ElevatedButton.styleFrom(
-          minimumSize: const Size(double.infinity, 50),
-          backgroundColor: Colors.amber),
-      child: const Text("Save",
-          style: TextStyle(fontSize: 18, color: Colors.white)),
     );
   }
 }
