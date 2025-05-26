@@ -15,7 +15,7 @@ Future<void> main() async {
   );
         
   runApp(MultiProvider(providers: [
-    ChangeNotifierProvider(create: (_) => TripsProvider()..fetchTripsData()),
+    ChangeNotifierProvider(create: (_) => CargoJobProvider()..fetchJobsData()), // Updated Provider
     ChangeNotifierProvider(create: (_) => LoadingProvider())
   ], child: const MyApp()));
 }
