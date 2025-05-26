@@ -1,7 +1,6 @@
 import 'package:bizorganizer/main.dart';
 import 'package:bizorganizer/models/trips.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class TripsProvider extends ChangeNotifier {

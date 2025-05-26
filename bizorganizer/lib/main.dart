@@ -5,15 +5,15 @@ import 'package:bizorganizer/signin.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:provider/provider.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-void main() async {
+Future<void> main() async {
   await Supabase.initialize(
-    url: 'https://uebnszlrsqnkddwfzcxd.supabase.co',
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVlYm5zemxyc3Fua2Rkd2Z6Y3hkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzA5NzExMjcsImV4cCI6MjA0NjU0NzEyN30.8MW_ZQhV9A-uLTzsxLtWY6XoKqb6K5DQjR1OKq5rzoM',
+    url: 'https://legzptivatldmbgxhwus.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxlZ3pwdGl2YXRsZG1iZ3hod3VzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDIyNjE5MjIsImV4cCI6MjA1NzgzNzkyMn0.1N1Igp__28AxXtD4Lw7x6ja1_pBxoHN-0m6fHCXfMDM',
   );
-
+        
   runApp(MultiProvider(providers: [
     ChangeNotifierProvider(create: (_) => TripsProvider()..fetchTripsData()),
     ChangeNotifierProvider(create: (_) => LoadingProvider())
