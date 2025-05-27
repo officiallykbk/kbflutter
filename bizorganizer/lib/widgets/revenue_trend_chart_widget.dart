@@ -4,6 +4,12 @@ import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:bizorganizer/models/cargo_job.dart'; // Assuming CargoJob model is here
 import 'package:bizorganizer/models/status_constants.dart'; // For paymentStatusToString
 
+
+  class _ChartData {
+    _ChartData(this.date, this.revenue);
+    final DateTime date;
+    final double revenue;
+  }
 class RevenueTrendChartWidget extends StatefulWidget {
   const RevenueTrendChartWidget({
     Key? key,
@@ -26,12 +32,6 @@ class _RevenueTrendChartWidgetState extends State<RevenueTrendChartWidget> {
   List<_ChartData> _processedChartData = [];
   late TooltipBehavior _tooltipBehavior;
 
-  // Private helper class for chart data points
-  class _ChartData {
-    _ChartData(this.date, this.revenue);
-    final DateTime date;
-    final double revenue;
-  }
 
   @override
   void initState() {
@@ -146,7 +146,7 @@ class _RevenueTrendChartWidgetState extends State<RevenueTrendChartWidget> {
           numberFormat: NumberFormat.compactSimpleCurrency(locale: 'en_US'), // Compact format for large numbers
         ),
         tooltipBehavior: _tooltipBehavior,
-        series: <ChartSeries<_ChartData, DateTime>>[
+        series: [
           SplineSeries<_ChartData, DateTime>( // Changed to SplineSeries for a smoother curve
             dataSource: _processedChartData,
             xValueMapper: (_ChartData data, _) => data.date,

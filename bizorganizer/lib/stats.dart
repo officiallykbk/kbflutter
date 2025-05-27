@@ -336,13 +336,13 @@ class _JobStatsPageState extends State<JobStatsPage> {
                             child: Container(
                               padding: EdgeInsets.symmetric(horizontal: 12, vertical: 15),
                               decoration: BoxDecoration(
-                                color: Colors.grey[200],
+                                color: const Color.fromARGB(255, 188, 183, 183),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Flexible(child: Text(dateRangeText, style: TextStyle(fontSize: 14, color: Colors.black))),
+                                  Flexible(child: Text(dateRangeText, style: TextStyle(fontSize: 14, color: Colors.black87,overflow: TextOverflow.ellipsis))),
                                   Icon(Icons.calendar_today, size: 20),
                                 ],
                               ),
@@ -355,14 +355,15 @@ class _JobStatsPageState extends State<JobStatsPage> {
                             decoration: InputDecoration(
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                               contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                              fillColor: Colors.grey[200],
+                              fillColor: const Color.fromARGB(255, 188, 183, 183),
                               filled: true,
                             ),
+                            dropdownColor: const Color.fromARGB(255, 188, 183, 183),
                             value: selectedRange,
                             items: ['Last 7 Days', 'Last Month', 'Last 6 Months', 'Custom']
                                 .map((range) => DropdownMenuItem(
                                       value: range,
-                                      child: Text(range, style: TextStyle(fontSize: 14)),
+                                      child: Text(range, style: TextStyle(fontSize: 14,color:const Color.fromARGB(255, 34, 34, 34))),
                                     ))
                                 .toList(),
                             onChanged: (value) {
@@ -380,20 +381,22 @@ class _JobStatsPageState extends State<JobStatsPage> {
                         ),
                       ],
                     ),
-                    SizedBox(height: 8),
+                    SizedBox(height: 20),
                     DropdownButtonFormField<String>(
                       decoration: InputDecoration(
                         labelText: "Filter by Payment Status",
+                        labelStyle:TextStyle(color:Colors.white),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                        fillColor: Colors.grey[200],
+                         fillColor: const Color.fromARGB(255, 188, 183, 183),
                         filled: true,
                       ),
+                      dropdownColor:  const Color.fromARGB(255, 188, 183, 183),
                       value: selectedPaymentStatusFilter,
                       items: ['Paid Only', 'Pending Only', 'Paid + Pending']
                           .map((status) => DropdownMenuItem(
                                 value: status,
-                                child: Text(status),
+                                child: Text(status,style:TextStyle(color:Color.fromARGB(255, 34,34, 34))),
                               ))
                           .toList(),
                       onChanged: (value) {
@@ -530,7 +533,6 @@ class _JobStatsPageState extends State<JobStatsPage> {
               children: [
                 _statusCard(deliveryStatusToString(DeliveryStatus.Delivered).toUpperCase(), Colors.green, jobProvider.completedJobs.length), 
                 _statusCard(deliveryStatusToString(DeliveryStatus.Scheduled).toUpperCase(), Colors.blue.shade300, jobProvider.jobs.where((j) => deliveryStatusFromString(j['delivery_status']?.toString()) == DeliveryStatus.Scheduled).length),
-                _statusCard(deliveryStatusToString(DeliveryStatus.InProgress).toUpperCase(), Colors.orange.shade700, jobProvider.jobs.where((j) => deliveryStatusFromString(j['delivery_status']?.toString()) == DeliveryStatus.InProgress).length),
                 _statusCard(deliveryStatusToString(DeliveryStatus.Cancelled).toUpperCase(), Colors.red.shade700, jobProvider.cancelledJobs.length),
                 _statusCard(deliveryStatusToString(DeliveryStatus.Delayed).toUpperCase(), Colors.purple.shade700, jobProvider.delayedJobs.length), 
               ],
@@ -613,4 +615,4 @@ class _JobStatsPageState extends State<JobStatsPage> {
   }
 }
 
-[end of bizorganizer/lib/stats.dart]
+

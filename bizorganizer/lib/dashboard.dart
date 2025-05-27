@@ -34,10 +34,10 @@ class _DashboardState extends State<Dashboard> {
   // Task 1.a: Add State Variables for Dashboard Filters
   DateTime _dashboardStartDate = DateTime.now().subtract(const Duration(days: 29)); // Default: Last 30 days (29+today)
   DateTime _dashboardEndDate = DateTime.now();
-  String _dashboardDateRangeDisplay = "Last 30 Days"; 
+  // String _dashboardDateRangeDisplay = "Last 30 Days"; 
 
   String _dashboardPaymentStatusFilter = "Paid + Pending"; 
-  final List<String> _paymentStatusOptions = ["Paid + Pending", "Paid Only", "Pending Only"];
+  // final List<String> _paymentStatusOptions = ["Paid + Pending", "Paid Only", "Pending Only"];
 
 
   @override
@@ -46,23 +46,23 @@ class _DashboardState extends State<Dashboard> {
     _scrollController.addListener(_scrollListener);
     _jobsStream = _getJobsStream(supabase); 
     // Initialize _dashboardDateRangeDisplay based on default dates
-    _updateDashboardDateRangeDisplay(_dashboardStartDate, _dashboardEndDate, isInitial: true);
+    // _updateDashboardDateRangeDisplay(_dashboardStartDate, _dashboardEndDate, isInitial: true);
   }
 
-  void _updateDashboardDateRangeDisplay(DateTime start, DateTime end, {bool isInitial = false}) {
-    // Check if it's a predefined range or custom
-    if (!isInitial || selectedRangeIsPredefined()) { // If it's a predefined range, use the friendly name
-        // This part might need adjustment if selectedRange is not directly managed here.
-        // For now, if it's not a custom range via _selectDashboardDateRange, keep or set predefined text.
-        if (isInitial && _dashboardDateRangeDisplay == "Last 30 Days") {
-             // Keep default if it's the initial setup for "Last 30 days"
-        } else if (!isInitial) { // Only update if it's a custom selection that changed it
-             _dashboardDateRangeDisplay = "${DateFormat.yMd().format(start)} - ${DateFormat.yMd().format(end)}";
-        }
-    } else { // Custom range
-         _dashboardDateRangeDisplay = "${DateFormat.yMd().format(start)} - ${DateFormat.yMd().format(end)}";
-    }
-}
+//   void _updateDashboardDateRangeDisplay(DateTime start, DateTime end, {bool isInitial = false}) {
+//     // Check if it's a predefined range or custom
+//     if (!isInitial || selectedRangeIsPredefined()) { // If it's a predefined range, use the friendly name
+//         // This part might need adjustment if selectedRange is not directly managed here.
+//         // For now, if it's not a custom range via _selectDashboardDateRange, keep or set predefined text.
+//         if (isInitial && _dashboardDateRangeDisplay == "Last 30 Days") {
+//              // Keep default if it's the initial setup for "Last 30 days"
+//         } else if (!isInitial) { // Only update if it's a custom selection that changed it
+//              _dashboardDateRangeDisplay = "${DateFormat.yMd().format(start)} - ${DateFormat.yMd().format(end)}";
+//         }
+//     } else { // Custom range
+//          _dashboardDateRangeDisplay = "${DateFormat.yMd().format(start)} - ${DateFormat.yMd().format(end)}";
+//     }
+// }
 
 
   bool selectedRangeIsPredefined() {
@@ -82,22 +82,22 @@ class _DashboardState extends State<Dashboard> {
   }
 
 
-  // Task 1.c: Implement UI for Filters on Dashboard - Date Range Picker Trigger
-  Future<void> _selectDashboardDateRange(BuildContext context) async {
-    final picked = await showDateRangePicker(
-      context: context,
-      initialDateRange: DateTimeRange(start: _dashboardStartDate, end: _dashboardEndDate),
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now().add(const Duration(days: 365)), 
-    );
-    if (picked != null && (picked.start != _dashboardStartDate || picked.end != _dashboardEndDate)) {
-      setState(() {
-        _dashboardStartDate = picked.start;
-        _dashboardEndDate = picked.end;
-        _dashboardDateRangeDisplay = "${DateFormat.yMd().format(picked.start)} - ${DateFormat.yMd().format(picked.end)}";
-      });
-    }
-  }
+  // // Task 1.c: Implement UI for Filters on Dashboard - Date Range Picker Trigger
+  // Future<void> _selectDashboardDateRange(BuildContext context) async {
+  //   final picked = await showDateRangePicker(
+  //     context: context,
+  //     initialDateRange: DateTimeRange(start: _dashboardStartDate, end: _dashboardEndDate),
+  //     firstDate: DateTime(2000),
+  //     lastDate: DateTime.now().add(const Duration(days: 365)), 
+  //   );
+  //   if (picked != null && (picked.start != _dashboardStartDate || picked.end != _dashboardEndDate)) {
+  //     setState(() {
+  //       _dashboardStartDate = picked.start;
+  //       _dashboardEndDate = picked.end;
+  //       _dashboardDateRangeDisplay = "${DateFormat.yMd().format(picked.start)} - ${DateFormat.yMd().format(picked.end)}";
+  //     });
+  //   }
+  // }
 
   void _scrollListener() {
     if (_scrollController.position.userScrollDirection == ScrollDirection.reverse) {
@@ -173,46 +173,22 @@ class _DashboardState extends State<Dashboard> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text("Revenue Overview", style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white70)),
-                            const SizedBox(height: 12),
                             Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Expanded(
-                                  child: TextButton.icon(
-                                    icon: const Icon(Icons.calendar_today, size: 18),
-                                    label: Text(_dashboardDateRangeDisplay, style: const TextStyle(fontSize: 14)),
-                                    onPressed: () => _selectDashboardDateRange(context),
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                      backgroundColor: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: DropdownButtonFormField<String>(
-                                    value: _dashboardPaymentStatusFilter,
-                                    items: _paymentStatusOptions.map((String value) {
-                                      return DropdownMenuItem<String>(value: value, child: Text(value, style: const TextStyle(fontSize: 14)));
-                                    }).toList(),
-                                    onChanged: (String? newValue) {
-                                      if (newValue != null) {
-                                        setState(() {
-                                          _dashboardPaymentStatusFilter = newValue;
-                                        });
-                                      }
-                                    },
-                                    decoration: InputDecoration(
-                                      labelText: 'Payment',
-                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                      fillColor: Colors.grey.shade700,
-                                      filled: true,
-                                    ),
-                                    dropdownColor: Colors.grey.shade800,
-                                  ),
-                                ),
+                                Text("Revenue Overview", style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white70)),
+                                   Align(
+                                      alignment: Alignment.centerRight,
+                                      child: TextButton(
+                                        onPressed: () => Navigator.of(context).push(
+                                          MaterialPageRoute(builder: (_) => JobStatsPage(
+                                                initialStartDate: _dashboardStartDate,
+                                                initialEndDate: _dashboardEndDate,
+                                                initialPaymentStatusFilter: _dashboardPaymentStatusFilter,
+                                          ))),
+                                        child: const Text("View More Stats ->", style: TextStyle(fontSize: 12)),
+                                      ),
+                                    )
                               ],
                             ),
                             const SizedBox(height: 12),
@@ -240,18 +216,6 @@ class _DashboardState extends State<Dashboard> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                             Align(
-                              alignment: Alignment.centerRight,
-                              child: TextButton(
-                                onPressed: () => Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => JobStatsPage(
-                                        initialStartDate: _dashboardStartDate,
-                                        initialEndDate: _dashboardEndDate,
-                                        initialPaymentStatusFilter: _dashboardPaymentStatusFilter,
-                                  ))),
-                                child: const Text("View More Stats ->", style: TextStyle(fontSize: 12)),
-                              ),
-                            )
                           ],
                         ),
                       ),
@@ -431,10 +395,6 @@ class _DashboardState extends State<Dashboard> {
       case 'refunded': 
         return Colors.red.shade700; 
       case 'delayed': // Added new status color
-      case 'onhold': // Kept for backward compatibility
-        return Colors.purple.shade700; // Using purple for delayed
-      case 'rejected': 
-        return Colors.grey.shade600; 
       default:
         return Theme.of(context).textTheme.bodySmall?.color ?? Colors.black; 
     }

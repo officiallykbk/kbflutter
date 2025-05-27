@@ -1,4 +1,3 @@
-import 'package:bizorganizer/main.dart'; // Assuming 'supabase' client is available from here
 import 'package:bizorganizer/models/cargo_job.dart'; 
 import 'package:bizorganizer/models/job_history_entry.dart';
 import 'package:bizorganizer/models/status_constants.dart'; 
@@ -13,8 +12,6 @@ class CargoJobProvider extends ChangeNotifier {
   List<Map<String, dynamic>> _completedJobs = []; // Will filter for Delivered
   List<Map<String, dynamic>> _pendingJobs = [];   // Will include Scheduled, InProgress
   List<Map<String, dynamic>> _cancelledJobs = [];
-  List<Map<String, dynamic>> _onHoldJobs = [];    // This is an explicit status from DB if used
-  List<Map<String, dynamic>> _rejectedJobs = [];  // This is an explicit status from DB if used
   List<Map<String, dynamic>> _delayedJobs = [];   // For jobs explicitly marked as Delayed or calculated as such
 
   List<Map<String, dynamic>> _paidJobs = [];
@@ -26,8 +23,6 @@ class CargoJobProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get completedJobs => _completedJobs; // Getter for Delivered jobs
   List<Map<String, dynamic>> get pendingJobs => _pendingJobs;
   List<Map<String, dynamic>> get cancelledJobs => _cancelledJobs;
-  List<Map<String, dynamic>> get onHoldJobs => _onHoldJobs; // Keep for explicit 'Onhold' if used
-  List<Map<String, dynamic>> get rejectedJobs => _rejectedJobs; // Keep for explicit 'Rejected' if used
   List<Map<String, dynamic>> get delayedJobs => _delayedJobs; // Getter for Delayed jobs
 
   List<Map<String, dynamic>> get paidJobs => _paidJobs;
@@ -57,18 +52,6 @@ class CargoJobProvider extends ChangeNotifier {
       
       _delayedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Delayed).toLowerCase()).toList();
 
-      // Explicit statuses from DB if they exist and are used (Onhold, Rejected were from previous broader enum)
-      // If these are not actual DB statuses, these lists might often be empty or could be removed.
-      // For now, assuming they might be set manually if those enum values are used.
-      _onHoldJobs = jobsData.where((job) {
-          final ds = deliveryStatusFromString(job['delivery_status']?.toString());
-          return ds == DeliveryStatus.Onhold; // Assuming Onhold is a valid DeliveryStatus enum value if needed
-      }).toList();
-
-      _rejectedJobs = jobsData.where((job) {
-          final ds = deliveryStatusFromString(job['delivery_status']?.toString());
-          return ds == DeliveryStatus.Rejected; // Assuming Rejected is a valid DeliveryStatus enum value if needed
-      }).toList();
 
 
       // Payment Status (remains unchanged by this task)
@@ -104,7 +87,7 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> editJob(int jobId, CargoJob updatedJobData) async { 
+  Future<void> editJob(String jobId, CargoJob updatedJobData) async { 
     try {
       final currentJobSnapshot = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
       final currentJob = CargoJob.fromJson(currentJobSnapshot);
@@ -148,7 +131,7 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateJobDeliveryStatus(int jobId, String newDeliveryStatus) async { 
+  Future<void> updateJobDeliveryStatus(String jobId, String newDeliveryStatus) async { 
     try {
       final currentJobData = await _supabase.from('cargo_jobs').select('delivery_status, payment_status').eq('id', jobId).single();
       final oldDeliveryStatus = currentJobData['delivery_status'] as String? ?? deliveryStatusToString(DeliveryStatus.Scheduled); // Default if null
@@ -186,7 +169,7 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateJobPaymentStatus(int jobId, String newStatus) async {
+  Future<void> updateJobPaymentStatus(String jobId, String newStatus) async {
     try {
       final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
       final oldStatus = currentJobData['payment_status'] as String?;
@@ -225,7 +208,7 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addJobHistoryRecord(int jobId, String fieldChanged, String oldValue, String newValue, String changedBy) async {
+  Future<void> addJobHistoryRecord(String jobId, String fieldChanged, String oldValue, String newValue, String changedBy) async {
     try {
       final historyEntry = JobHistoryEntry(
         jobId: jobId,

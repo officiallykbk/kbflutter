@@ -1,6 +1,6 @@
 class JobHistoryEntry {
-  final int? id; // Primary key from Supabase
-  final int? jobId; // Foreign key to cargo_jobs.id
+  final String? id; // Primary key from Supabase
+  final String? jobId; // Foreign key to cargo_jobs.id
   final String? fieldChanged; // Renamed from 'field'
   final String? oldValue;
   final String? newValue;
@@ -31,8 +31,8 @@ class JobHistoryEntry {
 
   factory JobHistoryEntry.fromJson(Map<String, dynamic> json) {
     return JobHistoryEntry(
-      id: json['id'] as int?,
-      jobId: json['job_id'] as int?,
+      id: json['id'] as String?,
+      jobId: json['job_id'] as String?,
       fieldChanged: json['field_changed'] as String?,
       oldValue: json['old_value'] as String?,
       newValue: json['new_value'] as String?,
