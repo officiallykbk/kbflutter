@@ -241,4 +241,32 @@ class CargoJobProvider extends ChangeNotifier {
       print('Error adding job history entry for job $jobId: $e');
     }
   }
+
+  Future<List<String>> fetchUniqueCustomerNames() async {
+    try {
+      final response = await _supabase.from('customer').select('clientName');
+
+      // The response is directly a List<Map<String, dynamic>> if successful, or can throw PostgrestException
+      // Supabase Dart client typically throws an error on failure, which is caught by the catch block.
+      // If response is null (which shouldn't happen for .select() if no error is thrown),
+      // or if it's not a list (also unlikely for .select()), we handle it.
+
+      if (response is List) {
+        final Set<String> uniqueNames = {};
+        for (var item in response) {
+          if (item is Map<String, dynamic> && item['clientName'] != null) {
+            uniqueNames.add(item['clientName'] as String);
+          }
+        }
+        return uniqueNames.toList();
+      } else {
+        // This case should ideally not be reached if Supabase client functions as expected (throws on error)
+        print('Error fetching unique customer names: Unexpected response format.');
+        return [];
+      }
+    } catch (e) {
+      print('Error fetching unique customer names: $e');
+      return [];
+    }
+  }
 }
