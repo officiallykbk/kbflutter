@@ -8,19 +8,10 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:bizorganizer/models/status_constants.dart'; 
+import 'package:bizorganizer/utils/us_states_data.dart'; // Task 1: Import us_states_data.dart
 
-const List<String> usStates = [
-  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
-  "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
-  "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana",
-  "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota",
-  "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada",
-  "New Hampshire", "New Jersey", "New Mexico", "New York",
-  "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon",
-  "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
-  "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
-  "West Virginia", "Wisconsin", "Wyoming"
-];
+// Task 3: Remove the old usStates list
+// const List<String> usStates = [ ... ]; 
 
 class AddJob extends StatefulWidget { 
   final CargoJob? job; 
@@ -73,8 +64,19 @@ class _AddJobState extends State<AddJob> {
       _estimatedDeliveryDate = job.estimatedDeliveryDate; 
       _actualDeliveryDate = job.actualDeliveryDate; 
 
-      _selectedPickupLocationState = usStates.contains(job.pickupLocation) ? job.pickupLocation : null;
-      _selectedDropoffLocationState = usStates.contains(job.dropoffLocation) ? job.dropoffLocation : null;
+      // Task 5: Verify initState for Edit Mode
+      // Assuming job.pickupLocation and job.dropoffLocation store abbreviations
+      if (job.pickupLocation != null && usStatesAndAbbreviations.any((s) => s.abbr == job.pickupLocation)) {
+        _selectedPickupLocationState = job.pickupLocation;
+      } else {
+         _selectedPickupLocationState = null; // Or try to find by name if legacy data might have full names
+      }
+
+      if (job.dropoffLocation != null && usStatesAndAbbreviations.any((s) => s.abbr == job.dropoffLocation)) {
+        _selectedDropoffLocationState = job.dropoffLocation;
+      } else {
+        _selectedDropoffLocationState = null;
+      }
       
       _selectedPaymentStatus = job.paymentStatus ?? paymentStatusToString(PaymentStatus.Pending);
       
@@ -179,6 +181,7 @@ class _AddJobState extends State<AddJob> {
           .join(' ');
     }
 
+    // Task 6: Verify Saving Logic (already correct)
     final jobData = CargoJob(
       id: widget.isEditing ? widget.job!.id : null, 
       shipperName: capitalizeEachWord(_shipperNameController.text),
@@ -215,17 +218,16 @@ class _AddJobState extends State<AddJob> {
   Widget build(BuildContext context) {
     List<DeliveryStatus> deliveryDropdownItemsEnums;
     if (widget.isEditing) {
-      deliveryDropdownItemsEnums = [ // Task 1.2: Restricted list for editing
+      deliveryDropdownItemsEnums = [ 
         DeliveryStatus.Scheduled,
         DeliveryStatus.InProgress,
         DeliveryStatus.Delivered,
         DeliveryStatus.Cancelled,
       ];
     } else {
-      deliveryDropdownItemsEnums = [DeliveryStatus.Scheduled]; // Only Scheduled for new
+      deliveryDropdownItemsEnums = [DeliveryStatus.Scheduled]; 
     }
 
-    // Payment status options remain broader for editing, restricted for new
     List<PaymentStatus> paymentDropdownItemsEnums = widget.isEditing
         ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
         : [PaymentStatus.Pending, PaymentStatus.Paid]; 
@@ -346,13 +348,17 @@ class _AddJobState extends State<AddJob> {
                          isOptional: true,
                       ),
                       const SizedBox(height: 16),
+                      // Task 4: Update Pickup Location Dropdown
                       DropdownButtonFormField<String>(
                         decoration: _inputDecoration('Pickup Location (State)', Icons.place_rounded),
                         dropdownColor: Colors.grey.shade800,
                         style: const TextStyle(color: Colors.white),
                         value: _selectedPickupLocationState,
-                        items: usStates.map((String value) {
-                          return DropdownMenuItem<String>(value: value, child: Text(value));
+                        items: usStatesAndAbbreviations.map((USState state) {
+                          return DropdownMenuItem<String>(
+                            value: state.abbr, // Value is the abbreviation
+                            child: Text(state.name), // Display is the full name
+                          );
                         }).toList(),
                         onChanged: (String? newValue) {
                           setState(() { _selectedPickupLocationState = newValue; });
@@ -360,13 +366,17 @@ class _AddJobState extends State<AddJob> {
                         validator: (value) => value == null ? 'Please select a pickup state' : null,
                       ),
                       const SizedBox(height: 16),
+                      // Task 4: Update Dropoff Location Dropdown
                       DropdownButtonFormField<String>(
                         decoration: _inputDecoration('Dropoff Location (State)', Icons.place_rounded),
                         dropdownColor: Colors.grey.shade800,
                         style: const TextStyle(color: Colors.white),
                         value: _selectedDropoffLocationState,
-                        items: usStates.map((String value) {
-                          return DropdownMenuItem<String>(value: value, child: Text(value));
+                        items: usStatesAndAbbreviations.map((USState state) {
+                          return DropdownMenuItem<String>(
+                            value: state.abbr, // Value is the abbreviation
+                            child: Text(state.name), // Display is the full name
+                          );
                         }).toList(),
                         onChanged: (String? newValue) {
                           setState(() { _selectedDropoffLocationState = newValue; });
@@ -390,7 +400,6 @@ class _AddJobState extends State<AddJob> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      // Delivery Status Dropdown
                       DropdownButtonFormField<String>(
                         decoration: _inputDecoration('Delivery Status', Icons.local_shipping),
                         dropdownColor: Colors.grey.shade800,
@@ -409,7 +418,6 @@ class _AddJobState extends State<AddJob> {
                         validator: (value) => value == null || value.isEmpty ? 'Please select a delivery status' : null,
                       ),
                       const SizedBox(height: 16),
-                       // Payment Status Dropdown
                       DropdownButtonFormField<String>(
                         decoration: _inputDecoration('Payment Status', Icons.payment),
                         dropdownColor: Colors.grey.shade800,
@@ -547,7 +555,7 @@ class DateSelectWidget extends StatelessWidget {
         style: const TextStyle(fontSize: 16, color: Colors.white70),
       ),
       trailing: isOptional && selectedDate != null 
-        ? IconButton(icon: const Icon(Icons.clear, color: Colors.redAccent), onPressed: () => onDateSelected(DateTime(0))) // Special value to clear
+        ? IconButton(icon: const Icon(Icons.clear, color: Colors.redAccent), onPressed: () => onDateSelected(DateTime(0))) 
         : null,
       onTap: () => _selectDate(context),
       tileColor: Colors.grey.shade800, 
@@ -578,11 +586,8 @@ class PaymentStatusWidget extends StatelessWidget {
       ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
       : [PaymentStatus.Pending, PaymentStatus.Paid];
 
-    // This widget was previously a ListTile with ChoiceChips.
-    // It's been converted to a DropdownButtonFormField in the previous step.
-    // Reverting to DropdownButtonFormField for consistency with Delivery Status and easier item management.
     return DropdownButtonFormField<String>(
-        decoration: InputDecoration( // Copied _inputDecoration style
+        decoration: InputDecoration( 
           labelText: "Payment Status",
           prefixIcon: Icon(Icons.payment, color: Colors.white70),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),

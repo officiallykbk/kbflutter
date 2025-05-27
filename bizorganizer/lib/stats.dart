@@ -7,6 +7,8 @@ import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:bizorganizer/models/status_constants.dart'; 
 import 'package:bizorganizer/models/cargo_job.dart'; 
 import 'package:bizorganizer/widgets/revenue_trend_chart_widget.dart'; 
+import 'package:bizorganizer/utils/us_states_data.dart'; // Task 3.1: Import us_states_data.dart
+
 
 // Helper class for generic chart data
 class ChartData {
@@ -75,11 +77,10 @@ class _JobStatsPageState extends State<JobStatsPage> {
       selectedRange = 'Custom'; 
       dateRangeText = '${DateFormat('dd/MM/yyyy').format(widget.initialStartDate!)} - ${DateFormat('dd/MM/yyyy').format(widget.initialEndDate!)}';
     } else {
-      // Default date range initialization logic
       final now = DateTime.now();
-      _selectedDateRange = null; // Explicitly null for predefined ranges initially
-      selectedRange = 'Last 7 Days'; // Default predefined range
-      dateRangeText = 'Last 7 Days'; // Default display text
+      _selectedDateRange = null; 
+      selectedRange = 'Last 7 Days'; 
+      dateRangeText = 'Last 7 Days'; 
     }
 
     if (widget.initialPaymentStatusFilter != null) {
@@ -141,8 +142,7 @@ class _JobStatsPageState extends State<JobStatsPage> {
         case 'Last 6 Months':
           calculatedStartDate = DateTime(now.year, now.month - 6, 1);
           break;
-        // 'Custom' is handled by _selectedDateRange being non-null
-        default: // Default to Last 7 Days
+        default: // Default to Last 7 Days, handles 'Custom' if _selectedDateRange became null
           calculatedStartDate = now.subtract(const Duration(days: 6));
       }
     }
@@ -230,10 +230,13 @@ class _JobStatsPageState extends State<JobStatsPage> {
     final dateFilteredJobsForChart = _getJobsInCurrentDateRange();
 
     for (var job in dateFilteredJobsForChart) { 
-      String destination = job['dropoff_location']?.toString() ?? 'Unknown'; 
-      if (destination.isEmpty) destination = 'N/A';
+      String destinationAbbr = job['dropoff_location']?.toString() ?? 'Unknown'; 
+      // Task 3.3: Use full state name for chart display
+      String destinationName = getUSStateNameFromAbbr(destinationAbbr);
+      if (destinationName.isEmpty || destinationName == 'N/A') destinationName = 'Unknown';
+
       double amount = (job['agreed_price'] as num? ?? 0.0).toDouble(); 
-      revenueByDestination[destination] = (revenueByDestination[destination] ?? 0) + amount;
+      revenueByDestination[destinationName] = (revenueByDestination[destinationName] ?? 0) + amount;
     }
 
     List<ChartData> chartData = revenueByDestination.entries
@@ -270,7 +273,7 @@ class _JobStatsPageState extends State<JobStatsPage> {
 
     return [
       StatusData(deliveryStatusToString(DeliveryStatus.Delivered).toUpperCase(), deliveredCount),
-      StatusData("${deliveryStatusToString(DeliveryStatus.Scheduled)}/\n${deliveryStatusToString(DeliveryStatus.InProgress)}", scheduledAndInProgressCount), 
+      StatusData("SCHEDULED/\nIN PROGRESS", scheduledAndInProgressCount), // Updated Label
       StatusData(deliveryStatusToString(DeliveryStatus.Cancelled).toUpperCase(), cancelledCount),
       StatusData(deliveryStatusToString(DeliveryStatus.Delayed).toUpperCase(), delayedCount),
     ];
@@ -414,12 +417,10 @@ class _JobStatsPageState extends State<JobStatsPage> {
               child: ListView(
                 children: [
                   _buildSectionTitle('Revenue Trend'),
-                  // Task 1: Wrap RevenueTrendChartWidget with Hero
-                  Hero(
+                  Hero( 
                     tag: 'revenueTrendChartHero',
                     child: (_axisMinDate != null && _axisMaxDate != null) 
                       ? RevenueTrendChartWidget(
-                          // Task 2: Pass all jobs from provider, widget filters payment status internally
                           jobs: jobProvider.jobs.map((jobMap) => CargoJob.fromJson(jobMap)).toList(),
                           startDate: _axisMinDate!,
                           endDate: _axisMaxDate!,
@@ -611,3 +612,5 @@ class _JobStatsPageState extends State<JobStatsPage> {
     );
   }
 }
+
+[end of bizorganizer/lib/stats.dart]
