@@ -1,7 +1,7 @@
 import 'package:bizorganizer/models/status_constants.dart';
 
 class CargoJob {
-  final int? id; 
+  final String? id; 
   final String? shipperName;
   final String? paymentStatus; 
   final String? deliveryStatus; 
@@ -81,7 +81,7 @@ class CargoJob {
 
   factory CargoJob.fromJson(Map<String, dynamic> json) { 
     return CargoJob(
-      id: json['id'] as int?,
+      id: json['id'] as String?,
       shipperName: json['shipper_name'] as String?,
       paymentStatus: json['payment_status'] as String?,
       deliveryStatus: json['delivery_status'] as String?,

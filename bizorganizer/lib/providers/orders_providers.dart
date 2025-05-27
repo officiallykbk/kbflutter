@@ -87,7 +87,7 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> editJob(int jobId, CargoJob updatedJobData) async { 
+  Future<void> editJob(String jobId, CargoJob updatedJobData) async { 
     try {
       final currentJobSnapshot = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
       final currentJob = CargoJob.fromJson(currentJobSnapshot);
@@ -131,7 +131,7 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateJobDeliveryStatus(int jobId, String newDeliveryStatus) async { 
+  Future<void> updateJobDeliveryStatus(String jobId, String newDeliveryStatus) async { 
     try {
       final currentJobData = await _supabase.from('cargo_jobs').select('delivery_status, payment_status').eq('id', jobId).single();
       final oldDeliveryStatus = currentJobData['delivery_status'] as String? ?? deliveryStatusToString(DeliveryStatus.Scheduled); // Default if null
@@ -169,7 +169,7 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateJobPaymentStatus(int jobId, String newStatus) async {
+  Future<void> updateJobPaymentStatus(String jobId, String newStatus) async {
     try {
       final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
       final oldStatus = currentJobData['payment_status'] as String?;
@@ -208,7 +208,7 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> addJobHistoryRecord(int jobId, String fieldChanged, String oldValue, String newValue, String changedBy) async {
+  Future<void> addJobHistoryRecord(String jobId, String fieldChanged, String oldValue, String newValue, String changedBy) async {
     try {
       final historyEntry = JobHistoryEntry(
         jobId: jobId,

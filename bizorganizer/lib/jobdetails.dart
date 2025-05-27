@@ -6,7 +6,6 @@ import 'package:photo_view/photo_view.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart'; 
 import 'package:bizorganizer/models/job_history_entry.dart'; 
-import 'package:bizorganizer/addjob.dart'; 
 import 'package:bizorganizer/models/cargo_job.dart'; 
 import 'package:bizorganizer/models/status_constants.dart';
 import 'package:bizorganizer/utils/us_states_data.dart'; // Added import
@@ -32,7 +31,6 @@ class _JobDetailsState extends State<JobDetails> {
   // Task 2.2: Update userSelectableDeliveryStatuses
   final List<DeliveryStatus> userSelectableDeliveryStatuses = [
     DeliveryStatus.Scheduled,
-    DeliveryStatus.InProgress,
     DeliveryStatus.Delivered, 
     DeliveryStatus.Cancelled, 
   ];
@@ -43,8 +41,7 @@ class _JobDetailsState extends State<JobDetails> {
     PaymentStatus.Paid,
     PaymentStatus.Cancelled,
     PaymentStatus.Refunded, 
-    PaymentStatus.Overdue,  
-    PaymentStatus.Partial,  
+    PaymentStatus.Overdue,   
   ];
 
 
