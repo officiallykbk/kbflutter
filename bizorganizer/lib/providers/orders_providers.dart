@@ -1,7 +1,7 @@
 import 'package:bizorganizer/main.dart'; // Assuming 'supabase' client is available from here
 import 'package:bizorganizer/models/cargo_job.dart'; 
-import 'package:bizorganizer/models/job_history_entry.dart'; // Import for JobHistoryEntry
-import 'package:bizorganizer/models/status_constants.dart'; // Task 1: Import Status Constants
+import 'package:bizorganizer/models/job_history_entry.dart';
+import 'package:bizorganizer/models/status_constants.dart'; 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,22 +10,26 @@ class CargoJobProvider extends ChangeNotifier {
 
   String? _image;
   List<Map<String, dynamic>> _jobs = [];
-  List<Map<String, dynamic>> _completedJobs = [];
-  List<Map<String, dynamic>> _pendingJobs = [];
+  List<Map<String, dynamic>> _completedJobs = []; // Will filter for Delivered
+  List<Map<String, dynamic>> _pendingJobs = [];   // Will include Scheduled, InProgress
   List<Map<String, dynamic>> _cancelledJobs = [];
-  List<Map<String, dynamic>> _onHoldJobs = [];
-  List<Map<String, dynamic>> _rejectedJobs = [];
+  List<Map<String, dynamic>> _onHoldJobs = [];    // This is an explicit status from DB if used
+  List<Map<String, dynamic>> _rejectedJobs = [];  // This is an explicit status from DB if used
+  List<Map<String, dynamic>> _delayedJobs = [];   // For jobs explicitly marked as Delayed or calculated as such
+
   List<Map<String, dynamic>> _paidJobs = [];
   List<Map<String, dynamic>> _pendingPaymentJobs = [];
-  List<Map<String, dynamic>> _overduePaymentJobs = [];
+  List<Map<String, dynamic>> _overduePaymentJobs = []; // For payment status
 
   String? get image => _image;
   List<Map<String, dynamic>> get jobs => _jobs;
-  List<Map<String, dynamic>> get completedJobs => _completedJobs;
+  List<Map<String, dynamic>> get completedJobs => _completedJobs; // Getter for Delivered jobs
   List<Map<String, dynamic>> get pendingJobs => _pendingJobs;
   List<Map<String, dynamic>> get cancelledJobs => _cancelledJobs;
-  List<Map<String, dynamic>> get onHoldJobs => _onHoldJobs;
-  List<Map<String, dynamic>> get rejectedJobs => _rejectedJobs;
+  List<Map<String, dynamic>> get onHoldJobs => _onHoldJobs; // Keep for explicit 'Onhold' if used
+  List<Map<String, dynamic>> get rejectedJobs => _rejectedJobs; // Keep for explicit 'Rejected' if used
+  List<Map<String, dynamic>> get delayedJobs => _delayedJobs; // Getter for Delayed jobs
+
   List<Map<String, dynamic>> get paidJobs => _paidJobs;
   List<Map<String, dynamic>> get pendingPayments => _pendingPaymentJobs;
   List<Map<String, dynamic>> get overduePayments => _overduePaymentJobs;
@@ -40,26 +44,37 @@ class CargoJobProvider extends ChangeNotifier {
       List<Map<String, dynamic>> jobsData = (response as List).cast<Map<String, dynamic>>();
       _jobs = jobsData;
 
-      _completedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Completed).toLowerCase()).toList();
-      _pendingJobs = jobsData.where((job) => 
-        job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Pending).toLowerCase() || 
-        job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.InProgress).toLowerCase()
-      ).toList();
-      _cancelledJobs = jobsData.where((job) => 
-        job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Cancelled).toLowerCase() ||
-        job['delivery_status']?.toString().toLowerCase() == 'refunded' // Assuming 'refunded' delivery is a type of cancellation
-      ).toList();
-      _onHoldJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Onhold).toLowerCase()).toList();
-      _rejectedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Rejected).toLowerCase()).toList();
-      // Note: 'Overdue' and 'Scheduled' for delivery_status might need specific handling if they are primary statuses from DB
-      // For now, they are handled by effectiveDeliveryStatus or directly if set.
+      // Filter based on Delivery Status using new enum values
+      _completedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Delivered).toLowerCase()).toList();
+      
+      _pendingJobs = jobsData.where((job) {
+        final status = job['delivery_status']?.toString().toLowerCase();
+        return status == deliveryStatusToString(DeliveryStatus.Scheduled).toLowerCase() || 
+               status == deliveryStatusToString(DeliveryStatus.InProgress).toLowerCase();
+      }).toList();
 
+      _cancelledJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Cancelled).toLowerCase()).toList();
+      
+      _delayedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Delayed).toLowerCase()).toList();
+
+      // Explicit statuses from DB if they exist and are used (Onhold, Rejected were from previous broader enum)
+      // If these are not actual DB statuses, these lists might often be empty or could be removed.
+      // For now, assuming they might be set manually if those enum values are used.
+      _onHoldJobs = jobsData.where((job) {
+          final ds = deliveryStatusFromString(job['delivery_status']?.toString());
+          return ds == DeliveryStatus.Onhold; // Assuming Onhold is a valid DeliveryStatus enum value if needed
+      }).toList();
+
+      _rejectedJobs = jobsData.where((job) {
+          final ds = deliveryStatusFromString(job['delivery_status']?.toString());
+          return ds == DeliveryStatus.Rejected; // Assuming Rejected is a valid DeliveryStatus enum value if needed
+      }).toList();
+
+
+      // Payment Status (remains unchanged by this task)
       _paidJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Paid).toLowerCase()).toList();
       _pendingPaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Pending).toLowerCase()).toList();
       _overduePaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Overdue).toLowerCase()).toList();
-      // Note: 'Refunded' and 'Cancelled' for payment_status
-      // _cancelledPaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Cancelled).toLowerCase()).toList();
-
 
       notifyListeners();
     } catch (e) {
@@ -89,29 +104,24 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> editJob(int jobId, CargoJob updatedJobData) async { // Renamed for clarity
+  Future<void> editJob(int jobId, CargoJob updatedJobData) async { 
     try {
       final currentJobSnapshot = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
       final currentJob = CargoJob.fromJson(currentJobSnapshot);
       final userId = _supabase.auth.currentUser?.id ?? 'system_edit';
 
-      // Prepare the data for update
       Map<String, dynamic> updatePayload = updatedJobData.toJson();
 
-      // Task 3.2: If delivery status is being set to Cancelled, also set payment status to Cancelled
+      // If delivery status is being set to Cancelled, also set payment status to Cancelled
       if (updatedJobData.deliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
         updatePayload['payment_status'] = paymentStatusToString(PaymentStatus.Cancelled);
       }
       
       await _supabase.from('cargo_jobs').update(updatePayload).eq('id', jobId);
       
-      // Log changes to history
-      // Compare currentJob (before update) with updatedJobData (what was intended for update)
-      // and updatePayload (what was actually sent, including auto payment cancellation)
-      
       final fieldsToCompare = {
         'shipper_name': {'old': currentJob.shipperName, 'new': updatedJobData.shipperName},
-        'payment_status': {'old': currentJob.paymentStatus, 'new': updatePayload['payment_status']}, // Compare with actual payload
+        'payment_status': {'old': currentJob.paymentStatus, 'new': updatePayload['payment_status']}, 
         'delivery_status': {'old': currentJob.deliveryStatus, 'new': updatedJobData.deliveryStatus},
         'pickup_location': {'old': currentJob.pickupLocation, 'new': updatedJobData.pickupLocation},
         'dropoff_location': {'old': currentJob.dropoffLocation, 'new': updatedJobData.dropoffLocation},
@@ -138,16 +148,15 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateJobDeliveryStatus(int jobId, String newDeliveryStatus) async { // oldDeliveryStatus removed from params
+  Future<void> updateJobDeliveryStatus(int jobId, String newDeliveryStatus) async { 
     try {
       final currentJobData = await _supabase.from('cargo_jobs').select('delivery_status, payment_status').eq('id', jobId).single();
-      final oldDeliveryStatus = currentJobData['delivery_status'] as String? ?? deliveryStatusToString(DeliveryStatus.Pending);
+      final oldDeliveryStatus = currentJobData['delivery_status'] as String? ?? deliveryStatusToString(DeliveryStatus.Scheduled); // Default if null
       final String currentPaymentStatus = currentJobData['payment_status'] as String? ?? paymentStatusToString(PaymentStatus.Pending);
       final userId = _supabase.auth.currentUser?.id ?? 'system_status_change';
 
       Map<String, dynamic> updatePayload = {'delivery_status': newDeliveryStatus};
 
-      // Task 2.2: If new delivery status is Cancelled, also set payment status to Cancelled
       if (newDeliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
         if (currentPaymentStatus != paymentStatusToString(PaymentStatus.Cancelled)) {
           updatePayload['payment_status'] = paymentStatusToString(PaymentStatus.Cancelled);
@@ -156,19 +165,17 @@ class CargoJobProvider extends ChangeNotifier {
 
       await _supabase.from('cargo_jobs').update(updatePayload).eq('id', jobId);
       
-      // Log delivery_status change
       if (oldDeliveryStatus != newDeliveryStatus) {
         await addJobHistoryRecord(jobId, 'delivery_status', oldDeliveryStatus, newDeliveryStatus, userId);
       }
 
-      // Log payment_status change if it was auto-updated
       if (updatePayload.containsKey('payment_status') && currentPaymentStatus != updatePayload['payment_status']) {
          await addJobHistoryRecord(
             jobId,
             'payment_status',
-            currentPaymentStatus, // This is the oldPaymentStatus before this specific operation
+            currentPaymentStatus, 
             updatePayload['payment_status'] as String,
-            userId // or a more specific changedBy like 'system_auto_cancel_from_delivery'
+            userId 
           );
       }
 

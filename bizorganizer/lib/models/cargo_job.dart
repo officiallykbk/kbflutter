@@ -1,22 +1,21 @@
-import 'package:bizorganizer/models/status_constants.dart'; // Task 2.1
+import 'package:bizorganizer/models/status_constants.dart';
 
-// Renamed from Trip to CargoJob and fields updated as per schema
 class CargoJob {
   final int? id; 
   final String? shipperName;
-  final String? paymentStatus; // Will store string representation from PaymentStatus enum
-  final String? deliveryStatus; // Will store string representation from DeliveryStatus enum
+  final String? paymentStatus; 
+  final String? deliveryStatus; 
   final String? pickupLocation;
   final String? dropoffLocation;
-  final DateTime? pickupDate; // Task 2.2
-  final DateTime? estimatedDeliveryDate; // Task 2.2
-  final DateTime? actualDeliveryDate; // Task 2.2
+  final DateTime? pickupDate; 
+  final DateTime? estimatedDeliveryDate; 
+  final DateTime? actualDeliveryDate; 
   final double? agreedPrice;
   final String? notes;
-  final DateTime? updatedAt; // Task 2.2
+  final DateTime? updatedAt; 
   final String? createdBy; 
   final String? receiptUrl;
-  final DateTime? createdAt; // Task 2.2
+  final DateTime? createdAt; 
 
   CargoJob({
     this.id,
@@ -36,35 +35,37 @@ class CargoJob {
     this.createdAt,
   });
 
-  // Task 2.5: effectiveDeliveryStatus Getter
   String? get effectiveDeliveryStatus {
-    // Ensure deliveryStatus itself is not null before using it.
-    // If deliveryStatus is already 'Completed' or 'Cancelled', it takes precedence.
-    if (deliveryStatus == deliveryStatusToString(DeliveryStatus.Completed) ||
+    // If already in a terminal state set by user, respect that.
+    if (deliveryStatus == deliveryStatusToString(DeliveryStatus.Delivered) ||
         deliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
       return deliveryStatus;
     }
-    // If there's an actual delivery date, the job is considered completed.
+
+    // If an actual delivery date is set, it's considered Delivered.
     if (actualDeliveryDate != null) {
-      return deliveryStatusToString(DeliveryStatus.Completed);
+      return deliveryStatusToString(DeliveryStatus.Delivered);
     }
-    // If it's past the estimated delivery date and not yet completed/cancelled, it's Overdue.
-    if (estimatedDeliveryDate != null && estimatedDeliveryDate!.isBefore(DateTime.now())) {
-      return deliveryStatusToString(DeliveryStatus.Overdue);
+
+    // If it's past estimated delivery and not yet Delivered or Cancelled, it's Delayed.
+    // (This implies the actual stored status could be Scheduled or InProgress)
+    if (estimatedDeliveryDate != null && 
+        deliveryStatus != deliveryStatusToString(DeliveryStatus.Delivered) && // Ensure not already delivered
+        deliveryStatus != deliveryStatusToString(DeliveryStatus.Cancelled) && // Ensure not already cancelled
+        estimatedDeliveryDate!.isBefore(DateTime.now())) {
+      return deliveryStatusToString(DeliveryStatus.Delayed);
     }
-    // Otherwise, return the current delivery status or default to Pending if null.
-    return deliveryStatus ?? deliveryStatusToString(DeliveryStatus.Pending);
+
+    // Otherwise, return the actual stored status, or default to Scheduled if null.
+    return deliveryStatus ?? deliveryStatusToString(DeliveryStatus.Scheduled);
   }
 
 
-  Map<String, dynamic> toJson() { // Task 2.4
+  Map<String, dynamic> toJson() { 
     return {
-      // id is typically not sent in toJson for create, Supabase handles it. 
-      // It might be needed if the toJson is used for updates where ID is required.
-      // 'id': id, 
       'shipper_name': shipperName,
-      'payment_status': paymentStatus, // Assumes this string is already from paymentStatusToString()
-      'delivery_status': deliveryStatus, // Assumes this string is already from deliveryStatusToString()
+      'payment_status': paymentStatus, 
+      'delivery_status': deliveryStatus, 
       'pickup_location': pickupLocation,
       'dropoff_location': dropoffLocation,
       'pickup_date': pickupDate?.toIso8601String(),
@@ -72,16 +73,13 @@ class CargoJob {
       'actual_delivery_date': actualDeliveryDate?.toIso8601String(),
       'agreed_price': agreedPrice,
       'notes': notes,
-      // Supabase usually handles updated_at and created_at automatically on the server-side.
-      // Only include them if you are explicitly setting them from the client.
-      // 'updated_at': updatedAt?.toIso8601String(), 
       'created_by': createdBy, 
       'receipt_url': receiptUrl,
-      // 'created_at': createdAt?.toIso8601String(),
+      // id, created_at, updated_at are typically handled by Supabase
     };
   }
 
-  factory CargoJob.fromJson(Map<String, dynamic> json) { // Task 2.3
+  factory CargoJob.fromJson(Map<String, dynamic> json) { 
     return CargoJob(
       id: json['id'] as int?,
       shipperName: json['shipper_name'] as String?,

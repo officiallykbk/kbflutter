@@ -1,15 +1,10 @@
 // Delivery Statuses
 enum DeliveryStatus {
-  Scheduled,
-  InProgress, // Added based on typical cargo statuses
-  OutForDelivery, // Added based on typical cargo statuses
-  Completed,
-  Cancelled,
-  Delayed, // Added for when it's past ETA but not yet 'Overdue' in a business sense
-  Onhold, // For jobs that are paused
-  Rejected, // If a job is rejected
-  Overdue, // Calculated status, but can also be an explicit status
-  Pending, // Generic pending, often initial state
+  Scheduled,    // User can select
+  InProgress,   // Internal status, potentially grouped with Scheduled for some views
+  Delivered,    // User can select (formerly Completed)
+  Cancelled,    // User can select
+  Delayed,      // Automatic/derived (formerly Overdue)
 }
 
 // Helper to get string value, or use extension .name in Dart 2.15+
@@ -23,28 +18,37 @@ String deliveryStatusToString(DeliveryStatus status) {
 }
 
 DeliveryStatus? deliveryStatusFromString(String? statusString) {
-  if (statusString == null) return null;
-  try {
-    return DeliveryStatus.values.firstWhere((e) => e.name.toLowerCase() == statusString.toLowerCase());
-  } catch (e) {
-    // Fallback for older Dart versions or if .name is not robust for all cases
-    try {
-      return DeliveryStatus.values.firstWhere((e) => e.toString().split('.').last.toLowerCase() == statusString.toLowerCase());
-    } catch (e) {
-      return null; // Or a default status like DeliveryStatus.Pending
+  if (statusString == null || statusString.isEmpty) return null;
+  String normalizedString = statusString.toLowerCase().replaceAll(' ', ''); // Handle "In Progress" vs "InProgress"
+
+  for (DeliveryStatus status in DeliveryStatus.values) {
+    if (status.name.toLowerCase() == normalizedString) {
+      return status;
+    }
+    // Fallback for older Dart versions if .name is not available (less likely now)
+    if (status.toString().split('.').last.toLowerCase() == normalizedString) {
+      return status;
     }
   }
+  
+  // Handle common legacy or alternative string values explicitly if needed
+  if (normalizedString == "completed") return DeliveryStatus.Delivered;
+  if (normalizedString == "overdue") return DeliveryStatus.Delayed;
+  if (normalizedString == "pending") return DeliveryStatus.Scheduled; // Example: mapping old 'pending' to 'Scheduled'
+
+  print("Warning: Unknown DeliveryStatus string '$statusString' received.");
+  return null; // Or return a default like DeliveryStatus.Scheduled if appropriate
 }
 
 
-// Payment Statuses
+// Payment Statuses (Unchanged as per task instructions)
 enum PaymentStatus {
   Pending,
   Paid,
-  Cancelled, // If a payment is cancelled
-  Refunded, // Added as it's a common payment state
-  Overdue, // If payment is past due date
-  Partial, // For partial payments
+  Cancelled, 
+  Refunded, 
+  Overdue, 
+  Partial, 
 }
 
 String paymentStatusToString(PaymentStatus status) {
@@ -56,14 +60,16 @@ String paymentStatusToString(PaymentStatus status) {
 }
 
 PaymentStatus? paymentStatusFromString(String? statusString) {
-  if (statusString == null) return null;
-  try {
-    return PaymentStatus.values.firstWhere((e) => e.name.toLowerCase() == statusString.toLowerCase());
-  } catch (e) {
-    try {
-      return PaymentStatus.values.firstWhere((e) => e.toString().split('.').last.toLowerCase() == statusString.toLowerCase());
-    } catch (e) {
-      return null; // Or a default status like PaymentStatus.Pending
+  if (statusString == null || statusString.isEmpty) return null;
+  String normalizedString = statusString.toLowerCase();
+  for (PaymentStatus status in PaymentStatus.values) {
+    if (status.name.toLowerCase() == normalizedString) {
+      return status;
+    }
+    if (status.toString().split('.').last.toLowerCase() == normalizedString) {
+      return status;
     }
   }
+  print("Warning: Unknown PaymentStatus string '$statusString' received.");
+  return null; 
 }

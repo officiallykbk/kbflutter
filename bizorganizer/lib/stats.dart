@@ -4,6 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
+import 'package:bizorganizer/models/status_constants.dart'; 
+import 'package:bizorganizer/models/cargo_job.dart'; 
+import 'package:bizorganizer/widgets/revenue_trend_chart_widget.dart'; 
 
 // Helper class for generic chart data
 class ChartData {
@@ -12,7 +15,7 @@ class ChartData {
   ChartData(this.x, this.y);
 }
 
-class RevenueData {
+class RevenueData { 
   final DateTime date;
   final double revenue;
   final String paymentStatus; 
@@ -32,30 +35,60 @@ class StatusData {
 
 
 class JobStatsPage extends StatefulWidget { 
+  final DateTime? initialStartDate;
+  final DateTime? initialEndDate;
+  final String? initialPaymentStatusFilter;
+
+  const JobStatsPage({
+    Key? key,
+    this.initialStartDate,
+    this.initialEndDate,
+    this.initialPaymentStatusFilter,
+  }) : super(key: key);
+
   @override
   _JobStatsPageState createState() => _JobStatsPageState(); 
 }
 
 class _JobStatsPageState extends State<JobStatsPage> { 
-  DateTimeRange? selectedDateRange;
+  DateTimeRange? _selectedDateRange; 
   String dateRangeText = 'Select Date Range';
-  late TooltipBehavior _tooltipBehavior;
+  late TooltipBehavior _tooltipBehaviorOtherCharts; 
   
-  List<RevenueData> filteredRevenueData = []; 
   List<Map<String,dynamic>> paymentFilteredJobsFullDetails = []; 
 
   String selectedRange = 'Last 7 Days'; 
   String selectedPaymentStatusFilter = 'Paid + Pending';
+
+  DateTime? _axisMinDate;
+  DateTime? _axisMaxDate;
 
   final NumberFormat currencyFormatter = NumberFormat.currency(locale: 'en_US', symbol: '\$');
 
   @override
   void initState() {
     super.initState();
-    _tooltipBehavior = TooltipBehavior(enable: true, header: '', format: 'point.x : point.y');
+    _tooltipBehaviorOtherCharts = TooltipBehavior(enable: true, header: '', format: 'point.x : point.y');
+
+    if (widget.initialStartDate != null && widget.initialEndDate != null) {
+      _selectedDateRange = DateTimeRange(start: widget.initialStartDate!, end: widget.initialEndDate!);
+      selectedRange = 'Custom'; 
+      dateRangeText = '${DateFormat('dd/MM/yyyy').format(widget.initialStartDate!)} - ${DateFormat('dd/MM/yyyy').format(widget.initialEndDate!)}';
+    } else {
+      // Default date range initialization logic
+      final now = DateTime.now();
+      _selectedDateRange = null; // Explicitly null for predefined ranges initially
+      selectedRange = 'Last 7 Days'; // Default predefined range
+      dateRangeText = 'Last 7 Days'; // Default display text
+    }
+
+    if (widget.initialPaymentStatusFilter != null) {
+      selectedPaymentStatusFilter = widget.initialPaymentStatusFilter!;
+    }
+    
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _processAndFilterData();
+        _processAndFilterDataForPage(); 
       }
     });
   }
@@ -67,144 +100,102 @@ class _JobStatsPageState extends State<JobStatsPage> {
 
     switch (selectedPaymentStatusFilter) {
       case 'Paid Only':
-        return allProviderJobs.where((job) => job['payment_status']?.toString().toLowerCase() == 'paid').toList(); 
+        return allProviderJobs.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Paid).toLowerCase()).toList(); 
       case 'Pending Only':
-        return allProviderJobs.where((job) => job['payment_status']?.toString().toLowerCase() == 'pending').toList(); 
+        return allProviderJobs.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Pending).toLowerCase()).toList(); 
       case 'Paid + Pending':
         return allProviderJobs.where((job) {
           final status = job['payment_status']?.toString().toLowerCase(); 
-          return status == 'paid' || status == 'pending';
+          return status == paymentStatusToString(PaymentStatus.Paid).toLowerCase() || status == paymentStatusToString(PaymentStatus.Pending).toLowerCase();
         }).toList();
       default:
         return [];
     }
   }
 
-  void _processAndFilterData() {
+  void _processAndFilterDataForPage() {
     if (!mounted) return;
-
     paymentFilteredJobsFullDetails = _getRawJobsBasedOnPaymentFilter(); 
-    
-    List<RevenueData> revenueDataFromPaymentFiltered = paymentFilteredJobsFullDetails.map((job) { 
-      final createdAtString = job['created_at'];
-      final amount = job['agreed_price']; 
-      final paymentStatus = job['payment_status']?.toString().toLowerCase() ?? 'unknown'; 
-      if (createdAtString is String && amount is num) {
-        try {
-          return RevenueData(DateTime.parse(createdAtString), amount.toDouble(), paymentStatus: paymentStatus);
-        } catch (e) {
-          print("Error parsing date for job ${job['id']}: $e"); 
-          return null;
-        }
-      }
-      return null;
-    }).whereType<RevenueData>().toList();
-
-    _applyDateFilterToRevenueData(revenueDataFromPaymentFiltered);
-  }
-
-  void _applyDateFilterToRevenueData(List<RevenueData> sourceRevenueData) {
-    if (!mounted) return;
-
-    DateTime now = DateTime.now();
-    DateTime startDate;
-    DateTime endDate = now;
-
-    if (selectedDateRange != null) {
-      startDate = selectedDateRange!.start;
-      endDate = selectedDateRange!.end;
-    } else {
-      switch (selectedRange) {
-        case 'Last 7 Days':
-          startDate = now.subtract(const Duration(days: 6));
-          break;
-        case 'Last Month':
-          startDate = DateTime(now.year, now.month - 1, 1);
-          endDate = DateTime(now.year, now.month, 0);
-          break;
-        case 'Last 6 Months':
-          startDate = DateTime(now.year, now.month - 6, 1);
-          endDate = now;
-          break;
-        case 'Custom': 
-          if (selectedDateRange == null) { 
-            startDate = now.subtract(const Duration(days: 6)); 
-            print("Warning: Custom date range selected but no date range picked. Defaulting to Last 7 Days.");
-          } else {
-             startDate = selectedDateRange!.start;
-             endDate = selectedDateRange!.end;
-          }
-          break;
-        default:
-          startDate = now.subtract(const Duration(days: 6));
-      }
-    }
-
+    _updateAxisDates(); 
     setState(() {
-      filteredRevenueData = sourceRevenueData
-          .where((data) =>
-              !data.date.isBefore(startDate.subtract(Duration(microseconds: 1))) &&
-              !data.date.isAfter(endDate.add(Duration(days: 1, microseconds: -1))))
-          .toList();
     });
   }
+
+  void _updateAxisDates() {
+    DateTime now = DateTime.now();
+    DateTime calculatedStartDate;
+    DateTime calculatedEndDate = now;
+
+    if (_selectedDateRange != null) { 
+      calculatedStartDate = _selectedDateRange!.start;
+      calculatedEndDate = _selectedDateRange!.end;
+    } else { 
+      switch (selectedRange) {
+        case 'Last 7 Days':
+          calculatedStartDate = now.subtract(const Duration(days: 6));
+          break;
+        case 'Last Month':
+          calculatedStartDate = DateTime(now.year, now.month - 1, 1);
+          calculatedEndDate = DateTime(now.year, now.month, 0); 
+          break;
+        case 'Last 6 Months':
+          calculatedStartDate = DateTime(now.year, now.month - 6, 1);
+          break;
+        // 'Custom' is handled by _selectedDateRange being non-null
+        default: // Default to Last 7 Days
+          calculatedStartDate = now.subtract(const Duration(days: 6));
+      }
+    }
+    
+    _axisMinDate = DateTime(calculatedStartDate.year, calculatedStartDate.month, calculatedStartDate.day);
+    _axisMaxDate = DateTime(calculatedEndDate.year, calculatedEndDate.month, calculatedEndDate.day, 23, 59, 59, 999);
+  }
+
 
   void _handleCustomDateRangeSelected(DateTime startDate, DateTime endDate) {
     if (!mounted) return;
     setState(() {
-      selectedDateRange = DateTimeRange(start: startDate, end: endDate);
+      _selectedDateRange = DateTimeRange(start: startDate, end: endDate);
       dateRangeText = '${DateFormat('dd/MM/yyyy').format(startDate)} - ${DateFormat('dd/MM/yyyy').format(endDate)}';
-      selectedRange = 'Custom';
-      _processAndFilterData(); 
+      selectedRange = 'Custom'; 
+      _processAndFilterDataForPage(); 
     });
   }
 
-  double _calculateTotalRevenue(List<RevenueData> data) {
-    return data.fold(0.0, (sum, item) => sum + item.revenue);
-  }
-
-  double _calculateAverageRevenuePerJob(List<RevenueData> data) { // Renamed parameter & logic consistent
-    if (data.isEmpty) return 0.0;
-    return _calculateTotalRevenue(data) / data.length;
-  }
-
-  Map<String, double> _calculatePaidVsPendingRevenue() {
-    double paid = 0;
-    double pending = 0;
-    
-    DateTime now = DateTime.now();
-    DateTime filterStartDate;
-    DateTime filterEndDate = now;
-
-    if (selectedDateRange != null) {
-        filterStartDate = selectedDateRange!.start;
-        filterEndDate = selectedDateRange!.end;
-    } else {
-        switch (selectedRange) {
-            case 'Last 7 Days': filterStartDate = now.subtract(const Duration(days: 6)); break;
-            case 'Last Month':
-                filterStartDate = DateTime(now.year, now.month - 1, 1);
-                filterEndDate = DateTime(now.year, now.month, 0);
-                break;
-            case 'Last 6 Months': filterStartDate = DateTime(now.year, now.month - 6, 1); break;
-            default: filterStartDate = now.subtract(const Duration(days: 6));
-        }
-    }
-    
-    List<Map<String,dynamic>> dateAndPaymentFilteredJobs = paymentFilteredJobsFullDetails.where((job){ 
+  List<Map<String,dynamic>> _getJobsInCurrentDateRange() {
+      if (_axisMinDate == null || _axisMaxDate == null) return [];
+      return paymentFilteredJobsFullDetails.where((job){
+        final createdAtString = job['created_at'] as String?;
+        if (createdAtString == null) return false;
         try {
-            final jobDate = DateTime.parse(job['created_at'] as String); 
-            return !jobDate.isBefore(filterStartDate.subtract(Duration(microseconds:1))) && 
-                   !jobDate.isAfter(filterEndDate.add(Duration(days: 1, microseconds: -1)));
+            final jobDate = DateTime.parse(createdAtString);
+            return !jobDate.isBefore(_axisMinDate!) && !jobDate.isAfter(_axisMaxDate!);
         } catch (e) { return false; }
     }).toList();
+  }
 
-    for (var job in dateAndPaymentFilteredJobs) { 
+  double _calculateTotalRevenueForCurrentRange() {
+    final jobsInDateRange = _getJobsInCurrentDateRange();
+    return jobsInDateRange.fold(0.0, (sum, job) => sum + ((job['agreed_price'] as num?)?.toDouble() ?? 0.0));
+  }
+
+  double _calculateAverageRevenuePerJobForCurrentRange() { 
+    final jobsInDateRange = _getJobsInCurrentDateRange();
+    if (jobsInDateRange.isEmpty) return 0.0;
+    return _calculateTotalRevenueForCurrentRange() / jobsInDateRange.length;
+  }
+
+  Map<String, double> _calculatePaidVsPendingRevenueForCurrentRange() {
+    double paid = 0;
+    double pending = 0;
+    final jobsInDateRange = _getJobsInCurrentDateRange();
+
+    for (var job in jobsInDateRange) { 
         final paymentStatus = job['payment_status']?.toString().toLowerCase() ?? 'unknown'; 
         final amount = (job['agreed_price'] as num? ?? 0.0).toDouble(); 
-        if (paymentStatus == 'paid') {
+        if (paymentStatus == paymentStatusToString(PaymentStatus.Paid).toLowerCase()) {
             paid += amount;
-        } else if (paymentStatus == 'pending') {
+        } else if (paymentStatus == paymentStatusToString(PaymentStatus.Pending).toLowerCase()) {
             pending += amount;
         }
     }
@@ -212,83 +203,33 @@ class _JobStatsPageState extends State<JobStatsPage> {
 }
 
 
-  List<ChartData> _getRevenueByDeliveryStatusData() { // Renamed
+  List<ChartData> _getRevenueByDeliveryStatusData() { 
     if (!mounted) return [];
     Map<String, double> revenueByStatus = {};
-    
-    DateTime now = DateTime.now();
-    DateTime filterStartDate;
-    DateTime filterEndDate = now;
+    final dateFilteredJobsForChart = _getJobsInCurrentDateRange();
 
-    if (selectedDateRange != null) {
-      filterStartDate = selectedDateRange!.start;
-      filterEndDate = selectedDateRange!.end;
-    } else {
-      switch (selectedRange) {
-        case 'Last 7 Days': filterStartDate = now.subtract(const Duration(days: 6)); break;
-        case 'Last Month':
-          filterStartDate = DateTime(now.year, now.month - 1, 1);
-          filterEndDate = DateTime(now.year, now.month, 0);
-          break;
-        case 'Last 6 Months': filterStartDate = DateTime(now.year, now.month - 6, 1); break;
-        default: filterStartDate = now.subtract(const Duration(days: 6));
+    for (var job in dateFilteredJobsForChart) { 
+      String statusStr = job['delivery_status']?.toString().toLowerCase() ?? deliveryStatusToString(DeliveryStatus.Scheduled).toLowerCase();
+      DeliveryStatus? statusEnum = deliveryStatusFromString(statusStr);
+
+      String chartCategory = statusStr; 
+      if (statusEnum != null) { 
+          chartCategory = deliveryStatusToString(statusEnum);
       }
-    }
-
-    List<Map<String,dynamic>> dateFilteredJobs = paymentFilteredJobsFullDetails.where((job){ 
-        try {
-            final jobDate = DateTime.parse(job['created_at'] as String); 
-            return !jobDate.isBefore(filterStartDate.subtract(Duration(microseconds:1))) && 
-                   !jobDate.isAfter(filterEndDate.add(Duration(days: 1, microseconds: -1)));
-        } catch (e) { return false; }
-    }).toList();
-
-
-    for (var job in dateFilteredJobs) { 
-      String status = job['delivery_status']?.toString().toLowerCase() ?? 'unknown'; 
-      if (status == 'in progress') status = 'pending'; 
-      if (status == 'refunded') status = 'cancelled'; 
-      if (status == 'onhold') status = 'overdue'; 
-
+      
       double amount = (job['agreed_price'] as num? ?? 0.0).toDouble(); 
-      revenueByStatus[status] = (revenueByStatus[status] ?? 0) + amount;
+      revenueByStatus[chartCategory] = (revenueByStatus[chartCategory] ?? 0) + amount;
     }
     
     return revenueByStatus.entries.map((entry) => ChartData(entry.key.toUpperCase(), entry.value)).toList();
   }
 
-  List<ChartData> _getRevenueByTop5DropoffLocationData() { // Renamed
+  List<ChartData> _getRevenueByTop5DropoffLocationData() { 
     if (!mounted) return [];
     Map<String, double> revenueByDestination = {};
+    final dateFilteredJobsForChart = _getJobsInCurrentDateRange();
 
-    DateTime now = DateTime.now();
-    DateTime filterStartDate;
-    DateTime filterEndDate = now;
-
-    if (selectedDateRange != null) {
-      filterStartDate = selectedDateRange!.start;
-      filterEndDate = selectedDateRange!.end;
-    } else {
-      switch (selectedRange) {
-        case 'Last 7 Days': filterStartDate = now.subtract(const Duration(days: 6)); break;
-        case 'Last Month':
-          filterStartDate = DateTime(now.year, now.month - 1, 1);
-          filterEndDate = DateTime(now.year, now.month, 0);
-          break;
-        case 'Last 6 Months': filterStartDate = DateTime(now.year, now.month - 6, 1); break;
-        default: filterStartDate = now.subtract(const Duration(days: 6));
-      }
-    }
-
-    List<Map<String,dynamic>> dateFilteredJobs = paymentFilteredJobsFullDetails.where((job){ 
-        try {
-            final jobDate = DateTime.parse(job['created_at'] as String); 
-            return !jobDate.isBefore(filterStartDate.subtract(Duration(microseconds:1))) && 
-                   !jobDate.isAfter(filterEndDate.add(Duration(days: 1, microseconds: -1)));
-        } catch (e) { return false; }
-    }).toList();
-
-    for (var job in dateFilteredJobs) { 
+    for (var job in dateFilteredJobsForChart) { 
       String destination = job['dropoff_location']?.toString() ?? 'Unknown'; 
       if (destination.isEmpty) destination = 'N/A';
       double amount = (job['agreed_price'] as num? ?? 0.0).toDouble(); 
@@ -306,24 +247,44 @@ class _JobStatsPageState extends State<JobStatsPage> {
     if (!mounted) return [];
     final jobProvider = context.watch<CargoJobProvider>(); 
     
-    int pendingCount = jobProvider.pendingJobs.length; 
-    int completedCount = jobProvider.completedJobs.length;
-    int cancelledCount = jobProvider.cancelledJobs.length; 
-    int overdueCount = jobProvider.onHoldJobs.length; 
+    int deliveredCount = 0;
+    int scheduledAndInProgressCount = 0;
+    int cancelledCount = 0;
+    int delayedCount = 0;
+
+    for (var jobMap in jobProvider.jobs) { 
+      final cargoJob = CargoJob.fromJson(jobMap); 
+      String? effectiveStatus = cargoJob.effectiveDeliveryStatus;
+
+      if (effectiveStatus == deliveryStatusToString(DeliveryStatus.Delivered)) {
+        deliveredCount++;
+      } else if (effectiveStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
+        cancelledCount++;
+      } else if (effectiveStatus == deliveryStatusToString(DeliveryStatus.Delayed)) {
+        delayedCount++;
+      } else if (effectiveStatus == deliveryStatusToString(DeliveryStatus.Scheduled) ||
+                 effectiveStatus == deliveryStatusToString(DeliveryStatus.InProgress)) {
+        scheduledAndInProgressCount++;
+      }
+    }
 
     return [
-      StatusData('Completed', completedCount),
-      StatusData('Pending', pendingCount),
-      StatusData('Cancelled', cancelledCount),
-      StatusData('Overdue', overdueCount), 
+      StatusData(deliveryStatusToString(DeliveryStatus.Delivered).toUpperCase(), deliveredCount),
+      StatusData("${deliveryStatusToString(DeliveryStatus.Scheduled)}/\n${deliveryStatusToString(DeliveryStatus.InProgress)}", scheduledAndInProgressCount), 
+      StatusData(deliveryStatusToString(DeliveryStatus.Cancelled).toUpperCase(), cancelledCount),
+      StatusData(deliveryStatusToString(DeliveryStatus.Delayed).toUpperCase(), delayedCount),
     ];
   }
 
   @override
   Widget build(BuildContext context) {
-    double totalRevenue = _calculateTotalRevenue(filteredRevenueData);
-    double avgRevenuePerJob = _calculateAverageRevenuePerJob(filteredRevenueData); // Renamed
-    Map<String, double> paidVsPending = selectedPaymentStatusFilter == 'Paid + Pending' ? _calculatePaidVsPendingRevenue() : {};
+    double totalRevenue = _calculateTotalRevenueForCurrentRange();
+    double avgRevenuePerJob = _calculateAverageRevenuePerJobForCurrentRange(); 
+    Map<String, double> paidVsPending = selectedPaymentStatusFilter == 'Paid + Pending' 
+                                      ? _calculatePaidVsPendingRevenueForCurrentRange() 
+                                      : {};
+    
+    final jobProvider = Provider.of<CargoJobProvider>(context, listen: false); 
 
     return Scaffold(
       appBar: AppBar(
@@ -335,7 +296,6 @@ class _JobStatsPageState extends State<JobStatsPage> {
         padding: const EdgeInsets.all(8.0),
         child: Column(
           children: [
-            // KPIs Section
             Card(
               elevation: 4,
               child: Padding(
@@ -346,7 +306,7 @@ class _JobStatsPageState extends State<JobStatsPage> {
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
                         _buildKpi("Total Revenue", currencyFormatter.format(totalRevenue)),
-                        _buildKpi("Avg. Revenue/Job", currencyFormatter.format(avgRevenuePerJob)), // Updated label
+                        _buildKpi("Avg. Revenue/Job", currencyFormatter.format(avgRevenuePerJob)), 
                       ],
                     ),
                     if (selectedPaymentStatusFilter == 'Paid + Pending' && paidVsPending.isNotEmpty) ...[
@@ -359,7 +319,6 @@ class _JobStatsPageState extends State<JobStatsPage> {
             ),
             SizedBox(height: 10),
 
-            // Filters Section
             Card(
               elevation: 4,
               child: Padding(
@@ -408,10 +367,10 @@ class _JobStatsPageState extends State<JobStatsPage> {
                               setState(() {
                                 selectedRange = value!;
                                 if (value != 'Custom') {
-                                  selectedDateRange = null;
-                                  dateRangeText = 'Select Date Range';
+                                  _selectedDateRange = null; 
+                                  dateRangeText = 'Select Date Range'; 
                                 }
-                                if (value != 'Custom') _processAndFilterData();
+                                if (value != 'Custom') _processAndFilterDataForPage();
                               });
                             },
                           ),
@@ -438,7 +397,7 @@ class _JobStatsPageState extends State<JobStatsPage> {
                         if (!mounted) return;
                         setState(() {
                           selectedPaymentStatusFilter = value!;
-                          _processAndFilterData();
+                          _processAndFilterDataForPage();
                         });
                       },
                     ),
@@ -455,26 +414,20 @@ class _JobStatsPageState extends State<JobStatsPage> {
               child: ListView(
                 children: [
                   _buildSectionTitle('Revenue Trend'),
-                  SizedBox(
-                    height: 300,
-                    child: SfCartesianChart(
-                      legend: Legend(isVisible: true, position: LegendPosition.bottom),
-                      primaryXAxis: DateTimeAxis(majorGridLines: MajorGridLines(width: 0)),
-                      primaryYAxis: NumericAxis(labelFormat: '\${value}', majorTickLines: MajorTickLines(size: 0)),
-                      tooltipBehavior: _tooltipBehavior,
-                      series: [
-                        LineSeries<RevenueData, DateTime>(
-                          name: 'Revenue',
-                          dataSource: filteredRevenueData,
-                          xValueMapper: (RevenueData data, _) => data.date,
-                          yValueMapper: (RevenueData data, _) => data.revenue,
-                          enableTooltip: true,
-                          markerSettings: MarkerSettings(isVisible: true),
-                          color: Theme.of(context).colorScheme.primary,
+                  // Task 1: Wrap RevenueTrendChartWidget with Hero
+                  Hero(
+                    tag: 'revenueTrendChartHero',
+                    child: (_axisMinDate != null && _axisMaxDate != null) 
+                      ? RevenueTrendChartWidget(
+                          // Task 2: Pass all jobs from provider, widget filters payment status internally
+                          jobs: jobProvider.jobs.map((jobMap) => CargoJob.fromJson(jobMap)).toList(),
+                          startDate: _axisMinDate!,
+                          endDate: _axisMaxDate!,
+                          paymentStatusFilter: selectedPaymentStatusFilter, 
                         )
-                      ],
-                    ),
+                      : Container(height: 300, child: Center(child: Text('Select date range to view trend.'))),
                   ),
+                  
                   SizedBox(height: 16),
                   _buildSectionTitle('Job Status Distribution (Overall Counts)'), 
                   SizedBox(
@@ -494,10 +447,10 @@ class _JobStatsPageState extends State<JobStatsPage> {
                   ),
                   SizedBox(height: 16),
                   _buildSectionTitle('Revenue by Delivery Status (Filtered)'), 
-                  _buildRevenueByDeliveryStatusChart(), // Renamed chart builder
+                  _buildRevenueByDeliveryStatusChart(), 
                   SizedBox(height: 16),
                   _buildSectionTitle('Top 5 Revenue by Dropoff Location (Filtered)'), 
-                  _buildRevenueByTop5DropoffLocationChart(), // Renamed chart builder
+                  _buildRevenueByTop5DropoffLocationChart(), 
                   SizedBox(height: 16),
                 ],
               ),
@@ -554,7 +507,7 @@ class _JobStatsPageState extends State<JobStatsPage> {
       children: [
         Text(title, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
         SizedBox(height: 4),
-        Text('$count jobs', style: TextStyle(fontSize: 16, fontWeight:FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black)), // Updated "trips" to "jobs"
+        Text('$count jobs', style: TextStyle(fontSize: 16, fontWeight:FontWeight.bold, color: Theme.of(context).textTheme.bodyLarge?.color ?? Colors.black)), 
       ],
     );
   }
@@ -574,10 +527,11 @@ class _JobStatsPageState extends State<JobStatsPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
-                _statusCard('Completed', Colors.green, jobProvider.completedJobs.length),
-                _statusCard('Pending', Colors.orange, jobProvider.pendingJobs.length), 
-                _statusCard('Cancelled', Colors.red, jobProvider.cancelledJobs.length), 
-                _statusCard('Overdue', Colors.purple, jobProvider.onHoldJobs.length), 
+                _statusCard(deliveryStatusToString(DeliveryStatus.Delivered).toUpperCase(), Colors.green, jobProvider.completedJobs.length), 
+                _statusCard(deliveryStatusToString(DeliveryStatus.Scheduled).toUpperCase(), Colors.blue.shade300, jobProvider.jobs.where((j) => deliveryStatusFromString(j['delivery_status']?.toString()) == DeliveryStatus.Scheduled).length),
+                _statusCard(deliveryStatusToString(DeliveryStatus.InProgress).toUpperCase(), Colors.orange.shade700, jobProvider.jobs.where((j) => deliveryStatusFromString(j['delivery_status']?.toString()) == DeliveryStatus.InProgress).length),
+                _statusCard(deliveryStatusToString(DeliveryStatus.Cancelled).toUpperCase(), Colors.red.shade700, jobProvider.cancelledJobs.length),
+                _statusCard(deliveryStatusToString(DeliveryStatus.Delayed).toUpperCase(), Colors.purple.shade700, jobProvider.delayedJobs.length), 
               ],
             ),
           ],
@@ -586,9 +540,9 @@ class _JobStatsPageState extends State<JobStatsPage> {
     );
   }
   
-  Widget _buildRevenueByDeliveryStatusChart() { // Renamed
+  Widget _buildRevenueByDeliveryStatusChart() { 
     if (!mounted) return SizedBox.shrink();
-    List<ChartData> chartData = _getRevenueByDeliveryStatusData(); // Renamed
+    List<ChartData> chartData = _getRevenueByDeliveryStatusData(); 
     if (chartData.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(8.0), child: Text("No revenue data for current filter.")));
 
     return SizedBox(
@@ -606,14 +560,14 @@ class _JobStatsPageState extends State<JobStatsPage> {
             color: Theme.of(context).colorScheme.tertiary,
           )
         ],
-         tooltipBehavior: _tooltipBehavior,
+         tooltipBehavior: _tooltipBehaviorOtherCharts, 
       ),
     );
   }
 
-  Widget _buildRevenueByTop5DropoffLocationChart() { // Renamed
+  Widget _buildRevenueByTop5DropoffLocationChart() { 
      if (!mounted) return SizedBox.shrink();
-    List<ChartData> top5Data = _getRevenueByTop5DropoffLocationData(); // Renamed
+    List<ChartData> top5Data = _getRevenueByTop5DropoffLocationData(); 
      if (top5Data.isEmpty) return Center(child: Padding(padding: const EdgeInsets.all(8.0), child: Text("No revenue data for current filter.")));
 
     return SizedBox(
@@ -631,16 +585,16 @@ class _JobStatsPageState extends State<JobStatsPage> {
             color: Theme.of(context).colorScheme.secondary,
           )
         ],
-        tooltipBehavior: _tooltipBehavior,
+        tooltipBehavior: _tooltipBehaviorOtherCharts, 
       ),
     );
   }
 
   void _pickDateRange() async {
     if (!mounted) return;
-    DateTimeRange? picked = await showDateRangePicker(
+    final DateTimeRange? picked = await showDateRangePicker( 
       context: context,
-      initialDateRange: selectedDateRange,
+      initialDateRange: _selectedDateRange, 
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(Duration(days: 365)),
     );

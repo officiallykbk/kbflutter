@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
-import 'package:bizorganizer/models/status_constants.dart'; // Task 1: Import Status Constants
+import 'package:bizorganizer/models/status_constants.dart'; 
 
 const List<String> usStates = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
@@ -21,12 +21,6 @@ const List<String> usStates = [
   "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
   "West Virginia", "Wisconsin", "Wyoming"
 ];
-
-// Delivery Status Options - No longer needed here, will use enum
-// const List<String> deliveryStatusOptions = [
-//   'pending', 'in progress', 'completed', 'cancelled', 'onhold', 'rejected'
-// ];
-
 
 class AddJob extends StatefulWidget { 
   final CargoJob? job; 
@@ -45,8 +39,8 @@ class _AddJobState extends State<AddJob> {
   DateTime? _estimatedDeliveryDate;
   DateTime? _actualDeliveryDate;
 
-  late String _selectedPaymentStatus; // Will be initialized in initState
-  late String _selectedDeliveryStatus; // Will be initialized in initState
+  late String _selectedPaymentStatus; 
+  late String _selectedDeliveryStatus; 
   String? _imageUrl;
   bool _isPickingImage = false;
 
@@ -75,20 +69,24 @@ class _AddJobState extends State<AddJob> {
       _notesController.text = job.notes ?? '';
       _imageUrl = job.receiptUrl;
       
-      _pickupDate = job.pickupDate; // Already DateTime?
-      _estimatedDeliveryDate = job.estimatedDeliveryDate; // Already DateTime?
-      _actualDeliveryDate = job.actualDeliveryDate; // Already DateTime?
+      _pickupDate = job.pickupDate; 
+      _estimatedDeliveryDate = job.estimatedDeliveryDate; 
+      _actualDeliveryDate = job.actualDeliveryDate; 
 
       _selectedPickupLocationState = usStates.contains(job.pickupLocation) ? job.pickupLocation : null;
       _selectedDropoffLocationState = usStates.contains(job.dropoffLocation) ? job.dropoffLocation : null;
       
       _selectedPaymentStatus = job.paymentStatus ?? paymentStatusToString(PaymentStatus.Pending);
-      _selectedDeliveryStatus = job.deliveryStatus ?? deliveryStatusToString(DeliveryStatus.Scheduled);
+      
+      DeliveryStatus? initialDeliveryStatusEnum = deliveryStatusFromString(job.deliveryStatus);
+      _selectedDeliveryStatus = initialDeliveryStatusEnum != null 
+                               ? deliveryStatusToString(initialDeliveryStatusEnum) 
+                               : deliveryStatusToString(DeliveryStatus.Scheduled);
+
     } else {
-      // Task 2: Initialize Default Statuses for New Jobs
       _pickupDate = DateTime.now();
-      _selectedDeliveryStatus = deliveryStatusToString(DeliveryStatus.Scheduled);
-      _selectedPaymentStatus = paymentStatusToString(PaymentStatus.Pending);
+      _selectedDeliveryStatus = deliveryStatusToString(DeliveryStatus.Scheduled); 
+      _selectedPaymentStatus = paymentStatusToString(PaymentStatus.Pending); 
     }
   }
 
@@ -154,7 +152,6 @@ class _AddJobState extends State<AddJob> {
         _pickupDate = DateTime.now(); 
         _estimatedDeliveryDate = null;
         _actualDeliveryDate = null;
-        // Reset to defaults for new job
         _selectedPaymentStatus = paymentStatusToString(PaymentStatus.Pending);
         _selectedDeliveryStatus = deliveryStatusToString(DeliveryStatus.Scheduled);
         _selectedPickupLocationState = null;
@@ -186,15 +183,14 @@ class _AddJobState extends State<AddJob> {
       id: widget.isEditing ? widget.job!.id : null, 
       shipperName: capitalizeEachWord(_shipperNameController.text),
       receiptUrl: _imageUrl, 
-      // Dates are already DateTime? objects, directly assignable
       pickupDate: _pickupDate,
       estimatedDeliveryDate: _estimatedDeliveryDate,
       actualDeliveryDate: _actualDeliveryDate,
       pickupLocation: _selectedPickupLocationState, 
       dropoffLocation: _selectedDropoffLocationState, 
       agreedPrice: double.tryParse(_agreedPriceController.text) ?? 0.0, 
-      paymentStatus: _selectedPaymentStatus, // Already string from enum helper
-      deliveryStatus: _selectedDeliveryStatus, // Already string from enum helper
+      paymentStatus: _selectedPaymentStatus, 
+      deliveryStatus: _selectedDeliveryStatus, 
       notes: _notesController.text,
     );
 
@@ -217,14 +213,22 @@ class _AddJobState extends State<AddJob> {
 
   @override
   Widget build(BuildContext context) {
-    // Task 3 & 4: Define items for dropdowns based on edit mode
-    List<DeliveryStatus> deliveryDropdownItems = widget.isEditing 
-        ? [DeliveryStatus.Scheduled, DeliveryStatus.Completed, DeliveryStatus.Cancelled]
-        : [DeliveryStatus.Scheduled];
+    List<DeliveryStatus> deliveryDropdownItemsEnums;
+    if (widget.isEditing) {
+      deliveryDropdownItemsEnums = [ // Task 1.2: Restricted list for editing
+        DeliveryStatus.Scheduled,
+        DeliveryStatus.InProgress,
+        DeliveryStatus.Delivered,
+        DeliveryStatus.Cancelled,
+      ];
+    } else {
+      deliveryDropdownItemsEnums = [DeliveryStatus.Scheduled]; // Only Scheduled for new
+    }
 
-    List<PaymentStatus> paymentDropdownItems = widget.isEditing
-        ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled]
-        : [PaymentStatus.Pending, PaymentStatus.Paid];
+    // Payment status options remain broader for editing, restricted for new
+    List<PaymentStatus> paymentDropdownItemsEnums = widget.isEditing
+        ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
+        : [PaymentStatus.Pending, PaymentStatus.Paid]; 
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212), 
@@ -392,19 +396,17 @@ class _AddJobState extends State<AddJob> {
                         dropdownColor: Colors.grey.shade800,
                         style: const TextStyle(color: Colors.white),
                         value: _selectedDeliveryStatus,
-                        items: deliveryDropdownItems.map((DeliveryStatus status) { // Task 3
+                        items: deliveryDropdownItemsEnums.map((DeliveryStatus status) { 
                           final statusStr = deliveryStatusToString(status);
                           return DropdownMenuItem<String>(
                             value: statusStr,
                             child: Text(statusStr.toUpperCase()),
                           );
                         }).toList(),
-                        onChanged: widget.isEditing || deliveryDropdownItems.length > 1 // Task 3: Read-only if new and only one option
-                          ? (String? newValue) {
+                        onChanged: (String? newValue) { 
                               setState(() { _selectedDeliveryStatus = newValue ?? deliveryStatusToString(DeliveryStatus.Scheduled); });
-                            }
-                          : null, // Make it appear disabled
-                        validator: (value) => value == null ? 'Please select a delivery status' : null,
+                            },
+                        validator: (value) => value == null || value.isEmpty ? 'Please select a delivery status' : null,
                       ),
                       const SizedBox(height: 16),
                        // Payment Status Dropdown
@@ -413,7 +415,7 @@ class _AddJobState extends State<AddJob> {
                         dropdownColor: Colors.grey.shade800,
                         style: const TextStyle(color: Colors.white),
                         value: _selectedPaymentStatus,
-                        items: paymentDropdownItems.map((PaymentStatus status) { // Task 4
+                        items: paymentDropdownItemsEnums.map((PaymentStatus status) { 
                           final statusStr = paymentStatusToString(status);
                           return DropdownMenuItem<String>(
                             value: statusStr,
@@ -423,7 +425,7 @@ class _AddJobState extends State<AddJob> {
                         onChanged: (String? newValue) {
                            setState(() { _selectedPaymentStatus = newValue ?? paymentStatusToString(PaymentStatus.Pending); });
                         },
-                        validator: (value) => value == null ? 'Please select a payment status' : null,
+                        validator: (value) => value == null || value.isEmpty ? 'Please select a payment status' : null,
                       ),
                       const SizedBox(height: 16),
                       TextInputField(
@@ -558,53 +560,52 @@ class DateSelectWidget extends StatelessWidget {
 }
 
 
-class PaymentStatusWidget extends StatelessWidget { // This widget was from previous refactor, using it directly
+class PaymentStatusWidget extends StatelessWidget { 
   final String selectedStatus;
   final ValueChanged<String> onStatusSelected;
+  final bool isEditing; 
 
   const PaymentStatusWidget({
     Key? key,
     required this.selectedStatus,
     required this.onStatusSelected,
+    required this.isEditing, 
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // For new jobs, items are Pending & Paid. For edit, Pending, Paid, Cancelled.
-    List<PaymentStatus> items = widget_isEditing_placeholder // This needs to be replaced by actual widget.isEditing
-      ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled] 
+    List<PaymentStatus> items = isEditing
+      ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
       : [PaymentStatus.Pending, PaymentStatus.Paid];
 
-    return ListTile(
-      title: const Text("Payment Status", style: TextStyle(fontSize: 16, color: Colors.white70)),
-      contentPadding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10), 
-      tileColor: Colors.grey.shade800,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: Colors.grey.shade700),
-      ),
-      subtitle: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: items.map((status) { 
+    // This widget was previously a ListTile with ChoiceChips.
+    // It's been converted to a DropdownButtonFormField in the previous step.
+    // Reverting to DropdownButtonFormField for consistency with Delivery Status and easier item management.
+    return DropdownButtonFormField<String>(
+        decoration: InputDecoration( // Copied _inputDecoration style
+          labelText: "Payment Status",
+          prefixIcon: Icon(Icons.payment, color: Colors.white70),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.amber)),
+          filled: true,
+          fillColor: Colors.grey.shade800,
+          labelStyle: const TextStyle(color: Colors.white70),
+        ),
+        dropdownColor: Colors.grey.shade800,
+        style: const TextStyle(color: Colors.white),
+        value: selectedStatus,
+        items: items.map((PaymentStatus status) { 
           final statusStr = paymentStatusToString(status);
-          bool isSelected = selectedStatus.toLowerCase() == statusStr.toLowerCase(); 
-          return ChoiceChip(
-            label: Text(statusStr.toUpperCase(), style: TextStyle(color: isSelected ? Colors.black : Colors.white70)),
-            selected: isSelected,
-            onSelected: (selected) {
-              if (selected) onStatusSelected(statusStr);
-            },
-            selectedColor: Colors.amber,
-            backgroundColor: Colors.grey.shade700,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? Colors.amber : Colors.grey.shade600)),
+          return DropdownMenuItem<String>(
+            value: statusStr,
+            child: Text(statusStr.toUpperCase()),
           );
         }).toList(),
-      ),
-    );
+        onChanged: (String? newValue) {
+           onStatusSelected(newValue ?? paymentStatusToString(PaymentStatus.Pending));
+        },
+        validator: (value) => value == null || value.isEmpty ? 'Please select a payment status' : null,
+      );
   }
 }
-
-// Placeholder for widget.isEditing in PaymentStatusWidget until it's passed properly or refactored
-// This is a temporary workaround for the overwrite_file_with_block context.
-// In a real scenario, PaymentStatusWidget would receive isEditing as a parameter.
-bool widget_isEditing_placeholder = false;

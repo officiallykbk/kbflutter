@@ -8,7 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:bizorganizer/models/job_history_entry.dart'; 
 import 'package:bizorganizer/addjob.dart'; 
 import 'package:bizorganizer/models/cargo_job.dart'; 
-import 'package:bizorganizer/models/status_constants.dart'; // Task 1: Already imported, confirmed.
+import 'package:bizorganizer/models/status_constants.dart';
 
 class JobDetails extends StatefulWidget {
   final Map<String, dynamic> job; 
@@ -20,36 +20,45 @@ class JobDetails extends StatefulWidget {
 }
 
 class _JobDetailsState extends State<JobDetails> {
-  late String currentActualDeliveryStatus; // Stores the actual DB value for delivery_status
-  late String currentActualPaymentStatus;  // Stores the actual DB value for payment_status
+  late String currentActualDeliveryStatus; 
+  late String currentActualPaymentStatus;  
 
   List<JobHistoryEntry> _historyEntries = [];
   bool _isLoadingHistory = true;
 
   final NumberFormat currencyFormatter = NumberFormat.currency(locale: 'en_US', symbol: '\$');
 
-  // Task 3 & 4: Define user-selectable statuses
+  // Task 2.2: Update userSelectableDeliveryStatuses
   final List<DeliveryStatus> userSelectableDeliveryStatuses = [
-    DeliveryStatus.Completed,
-    DeliveryStatus.Cancelled,
-    // Add other statuses users can *manually set from details page* if needed, e.g., back to Scheduled or InProgress
-    // For now, sticking to task: Completed, Cancelled
+    DeliveryStatus.Scheduled,
+    DeliveryStatus.InProgress,
+    DeliveryStatus.Delivered, 
+    DeliveryStatus.Cancelled, 
   ];
 
+  // Payment status options remain broader as per previous implementation, not changed by this task
   final List<PaymentStatus> userSelectablePaymentStatuses = [
     PaymentStatus.Pending,
     PaymentStatus.Paid,
     PaymentStatus.Cancelled,
-    // Consider PaymentStatus.Refunded if it's a common manual operation here
+    PaymentStatus.Refunded, 
+    PaymentStatus.Overdue,  
+    PaymentStatus.Partial,  
   ];
 
 
   @override
   void initState() {
     super.initState();
-    // Initialize with actual statuses from the job data
-    currentActualDeliveryStatus = widget.job['delivery_status']?.toString().toLowerCase() ?? deliveryStatusToString(DeliveryStatus.Pending);
-    currentActualPaymentStatus = widget.job['payment_status']?.toString().toLowerCase() ?? paymentStatusToString(PaymentStatus.Pending);
+    DeliveryStatus? initialDeliveryEnum = deliveryStatusFromString(widget.job['delivery_status']?.toString());
+    currentActualDeliveryStatus = initialDeliveryEnum != null 
+                                  ? deliveryStatusToString(initialDeliveryEnum) 
+                                  : deliveryStatusToString(DeliveryStatus.Scheduled);
+
+    PaymentStatus? initialPaymentEnum = paymentStatusFromString(widget.job['payment_status']?.toString());
+    currentActualPaymentStatus = initialPaymentEnum != null
+                                 ? paymentStatusToString(initialPaymentEnum)
+                                 : paymentStatusToString(PaymentStatus.Pending);
     _fetchHistory();
   }
 
@@ -125,11 +134,9 @@ class _JobDetailsState extends State<JobDetails> {
   @override
   Widget build(BuildContext context) {
     final jobProvider = Provider.of<CargoJobProvider>(context);
-    final CargoJob cargoJobInstance = CargoJob.fromJson(widget.job); // Convert map to CargoJob instance
+    final CargoJob cargoJobInstance = CargoJob.fromJson(widget.job); 
 
-    // Use local state for chip selection, which reflects the actual DB status
-    // The effective status is for display purposes in the table.
-    String displayDeliveryStatus = cargoJobInstance.effectiveDeliveryStatus ?? deliveryStatusToString(DeliveryStatus.Pending);
+    String displayEffectiveDeliveryStatus = cargoJobInstance.effectiveDeliveryStatus ?? deliveryStatusToString(DeliveryStatus.Scheduled);
     
     return Scaffold(
       appBar: AppBar(
@@ -151,13 +158,18 @@ class _JobDetailsState extends State<JobDetails> {
                   final updatedJobData = jobProvider.jobs.firstWhere((j) => j['id'] == widget.job['id'], orElse: () => widget.job);
                   if (mounted) {
                     setState(() {
-                      // Update the local map that widget.job refers to, so UI rebuilds with new data
                       widget.job.clear();
                       widget.job.addAll(updatedJobData);
                       
-                      // Re-initialize currentActual statuses from the (potentially) updated widget.job
-                      currentActualDeliveryStatus = widget.job['delivery_status']?.toString().toLowerCase() ?? deliveryStatusToString(DeliveryStatus.Pending);
-                      currentActualPaymentStatus = widget.job['payment_status']?.toString().toLowerCase() ?? paymentStatusToString(PaymentStatus.Pending);
+                      DeliveryStatus? newDeliveryEnum = deliveryStatusFromString(widget.job['delivery_status']?.toString());
+                      currentActualDeliveryStatus = newDeliveryEnum != null 
+                                                  ? deliveryStatusToString(newDeliveryEnum) 
+                                                  : deliveryStatusToString(DeliveryStatus.Scheduled);
+
+                      PaymentStatus? newPaymentEnum = paymentStatusFromString(widget.job['payment_status']?.toString());
+                      currentActualPaymentStatus = newPaymentEnum != null
+                                                 ? paymentStatusToString(newPaymentEnum)
+                                                 : paymentStatusToString(PaymentStatus.Pending);
                       _fetchHistory(); 
                     });
                   }
@@ -208,9 +220,9 @@ class _JobDetailsState extends State<JobDetails> {
                     _buildTableRow('Est. Delivery Date:', _formatDate(cargoJobInstance.estimatedDeliveryDate?.toIso8601String(), includeTime: false)),
                     _buildTableRow('Actual Delivery Date:', _formatDate(cargoJobInstance.actualDeliveryDate?.toIso8601String(), includeTime: false)),
                     _buildTableRow('Agreed Price:', currencyFormatter.format(cargoJobInstance.agreedPrice ?? 0.00)),
-                    _buildTableRow('Payment Status:', currentActualPaymentStatus.toUpperCase()), // Display actual stored payment status
-                    _buildTableRow('Effective Delivery Status:', displayDeliveryStatus.toUpperCase()), // Task 2.2: Display effective status
-                    _buildTableRow('Actual Delivery Status:', currentActualDeliveryStatus.toUpperCase()), // Display actual stored delivery status
+                    _buildTableRow('Payment Status:', currentActualPaymentStatus.toUpperCase()), 
+                    _buildTableRow('Effective Delivery Status:', displayEffectiveDeliveryStatus.toUpperCase()), 
+                    _buildTableRow('Actual Delivery Status:', currentActualDeliveryStatus.toUpperCase()), 
                     _buildTableRow('Notes:', cargoJobInstance.notes ?? 'N/A', isMultiline: true),
                     _buildTableRow('Created At:', _formatDate(cargoJobInstance.createdAt?.toIso8601String())),
                     _buildTableRow('Updated At:', _formatDate(cargoJobInstance.updatedAt?.toIso8601String())),
@@ -232,17 +244,16 @@ class _JobDetailsState extends State<JobDetails> {
                 child: Wrap(
                   spacing: 8.0, 
                   runSpacing: 4.0,
-                  children: userSelectableDeliveryStatuses.map((statusEnum) { // Task 3.1 & 3.2
+                  children: userSelectableDeliveryStatuses.map((statusEnum) { 
                     final statusStr = deliveryStatusToString(statusEnum);
                     return ChoiceChip(
                       label: Text(statusStr.toUpperCase(), style: TextStyle(color: currentActualDeliveryStatus == statusStr.toLowerCase() ? Colors.black : Colors.white)),
-                      selected: currentActualDeliveryStatus == statusStr.toLowerCase(), // Task 3.3: Reflect actual status
+                      selected: currentActualDeliveryStatus == statusStr.toLowerCase(), 
                       onSelected: (selected) {
                         if (selected) {
-                           // Provider method already handles history logging correctly with old status fetching
-                          jobProvider.updateJobDeliveryStatus(cargoJobInstance.id!, statusStr); // Task 3.4
+                          jobProvider.updateJobDeliveryStatus(cargoJobInstance.id!, statusStr); 
                           setState(() {
-                            currentActualDeliveryStatus = statusStr.toLowerCase(); // Update local state for immediate UI feedback
+                            currentActualDeliveryStatus = statusStr.toLowerCase(); 
                           });
                         }
                       },
@@ -267,17 +278,16 @@ class _JobDetailsState extends State<JobDetails> {
                   child: Wrap( 
                     spacing: 8.0, 
                     runSpacing: 4.0,
-                    children: userSelectablePaymentStatuses.map((statusEnum) { // Task 4.1 & 4.2
+                    children: userSelectablePaymentStatuses.map((statusEnum) { 
                       final statusStr = paymentStatusToString(statusEnum);
                       return ChoiceChip(
                         label: Text(statusStr.toUpperCase(), style: TextStyle(color: currentActualPaymentStatus == statusStr.toLowerCase() ? Colors.black : Colors.white)),
-                        selected: currentActualPaymentStatus == statusStr.toLowerCase(), // Task 4.3: Reflect actual status
+                        selected: currentActualPaymentStatus == statusStr.toLowerCase(), 
                         onSelected: (selected) {
                            if (selected) {
-                            // Provider method already handles history logging correctly with old status fetching
-                            jobProvider.updateJobPaymentStatus(cargoJobInstance.id!, statusStr); // Task 4.4
+                            jobProvider.updateJobPaymentStatus(cargoJobInstance.id!, statusStr); 
                             setState(() {
-                               currentActualPaymentStatus = statusStr.toLowerCase(); // Update local state
+                               currentActualPaymentStatus = statusStr.toLowerCase(); 
                             });
                           }
                         },
