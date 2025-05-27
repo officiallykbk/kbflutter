@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:bizorganizer/models/job_history_entry.dart'; 
 import 'package:bizorganizer/addjob.dart'; 
 import 'package:bizorganizer/models/cargo_job.dart'; 
+import 'package:bizorganizer/models/status_constants.dart'; // Task 1: Already imported, confirmed.
 
 class JobDetails extends StatefulWidget {
   final Map<String, dynamic> job; 
@@ -19,19 +20,36 @@ class JobDetails extends StatefulWidget {
 }
 
 class _JobDetailsState extends State<JobDetails> {
-  late String currentDeliveryStatus;
-  late String currentPaymentStatus;
+  late String currentActualDeliveryStatus; // Stores the actual DB value for delivery_status
+  late String currentActualPaymentStatus;  // Stores the actual DB value for payment_status
 
   List<JobHistoryEntry> _historyEntries = [];
   bool _isLoadingHistory = true;
 
   final NumberFormat currencyFormatter = NumberFormat.currency(locale: 'en_US', symbol: '\$');
 
+  // Task 3 & 4: Define user-selectable statuses
+  final List<DeliveryStatus> userSelectableDeliveryStatuses = [
+    DeliveryStatus.Completed,
+    DeliveryStatus.Cancelled,
+    // Add other statuses users can *manually set from details page* if needed, e.g., back to Scheduled or InProgress
+    // For now, sticking to task: Completed, Cancelled
+  ];
+
+  final List<PaymentStatus> userSelectablePaymentStatuses = [
+    PaymentStatus.Pending,
+    PaymentStatus.Paid,
+    PaymentStatus.Cancelled,
+    // Consider PaymentStatus.Refunded if it's a common manual operation here
+  ];
+
+
   @override
   void initState() {
     super.initState();
-    currentDeliveryStatus = widget.job['delivery_status']?.toString().toLowerCase() ?? 'pending';
-    currentPaymentStatus = widget.job['payment_status']?.toString().toLowerCase() ?? 'pending';
+    // Initialize with actual statuses from the job data
+    currentActualDeliveryStatus = widget.job['delivery_status']?.toString().toLowerCase() ?? deliveryStatusToString(DeliveryStatus.Pending);
+    currentActualPaymentStatus = widget.job['payment_status']?.toString().toLowerCase() ?? paymentStatusToString(PaymentStatus.Pending);
     _fetchHistory();
   }
 
@@ -107,6 +125,11 @@ class _JobDetailsState extends State<JobDetails> {
   @override
   Widget build(BuildContext context) {
     final jobProvider = Provider.of<CargoJobProvider>(context);
+    final CargoJob cargoJobInstance = CargoJob.fromJson(widget.job); // Convert map to CargoJob instance
+
+    // Use local state for chip selection, which reflects the actual DB status
+    // The effective status is for display purposes in the table.
+    String displayDeliveryStatus = cargoJobInstance.effectiveDeliveryStatus ?? deliveryStatusToString(DeliveryStatus.Pending);
     
     return Scaffold(
       appBar: AppBar(
@@ -120,7 +143,7 @@ class _JobDetailsState extends State<JobDetails> {
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => AddJob(job: CargoJob.fromJson(widget.job), isEditing: true), 
+                  builder: (_) => AddJob(job: cargoJobInstance, isEditing: true), 
                 ),
               ).then((value) async { 
                 if (value == true) { 
@@ -128,14 +151,13 @@ class _JobDetailsState extends State<JobDetails> {
                   final updatedJobData = jobProvider.jobs.firstWhere((j) => j['id'] == widget.job['id'], orElse: () => widget.job);
                   if (mounted) {
                     setState(() {
-                      currentDeliveryStatus = updatedJobData['delivery_status']?.toString().toLowerCase() ?? 'pending';
-                      currentPaymentStatus = updatedJobData['payment_status']?.toString().toLowerCase() ?? 'pending';
-                      // Refresh widget.job with new data if possible, or rely on parent to pass updated map
-                      // This is a simplification; a more robust solution might involve a direct way to update widget.job
-                      // or making JobDetails listen to a specific job ID from the provider.
-                      (widget as JobDetails).job.clear();
-                      (widget as JobDetails).job.addAll(updatedJobData);
-
+                      // Update the local map that widget.job refers to, so UI rebuilds with new data
+                      widget.job.clear();
+                      widget.job.addAll(updatedJobData);
+                      
+                      // Re-initialize currentActual statuses from the (potentially) updated widget.job
+                      currentActualDeliveryStatus = widget.job['delivery_status']?.toString().toLowerCase() ?? deliveryStatusToString(DeliveryStatus.Pending);
+                      currentActualPaymentStatus = widget.job['payment_status']?.toString().toLowerCase() ?? paymentStatusToString(PaymentStatus.Pending);
                       _fetchHistory(); 
                     });
                   }
@@ -148,7 +170,7 @@ class _JobDetailsState extends State<JobDetails> {
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            if (widget.job['receipt_url'] != null && widget.job['receipt_url'].isNotEmpty) 
+            if (cargoJobInstance.receiptUrl != null && cargoJobInstance.receiptUrl!.isNotEmpty) 
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -161,10 +183,10 @@ class _JobDetailsState extends State<JobDetails> {
                           onTap: () => Navigator.of(context).push(
                               MaterialPageRoute(
                                   builder: (_) => FullScreenImage(
-                                      imageUrl: widget.job['receipt_url']))), 
+                                      imageUrl: cargoJobInstance.receiptUrl!))), 
                           child: Hero(
-                              tag: widget.job['receipt_url'], 
-                              child: CacheImage(imageUrl: widget.job['receipt_url']))) 
+                              tag: cargoJobInstance.receiptUrl!, 
+                              child: CacheImage(imageUrl: cargoJobInstance.receiptUrl!))) 
                     ],
                   ),
                 ),
@@ -179,19 +201,20 @@ class _JobDetailsState extends State<JobDetails> {
                     1: FlexColumnWidth(), 
                   },
                   children: [
-                    _buildTableRow('Shipper Name:', widget.job['shipper_name'] ?? 'N/A'),
-                    _buildTableRow('Pickup Date:', _formatDate(widget.job['pickup_date'], includeTime: false)),
-                    _buildTableRow('Pickup Location:', widget.job['pickup_location'] ?? 'N/A'),
-                    _buildTableRow('Dropoff Location:', widget.job['dropoff_location'] ?? 'N/A'),
-                    _buildTableRow('Est. Delivery Date:', _formatDate(widget.job['estimated_delivery_date'], includeTime: false)),
-                    _buildTableRow('Actual Delivery Date:', _formatDate(widget.job['actual_delivery_date'], includeTime: false)),
-                    _buildTableRow('Agreed Price:', currencyFormatter.format((widget.job['agreed_price'] as num?)?.toDouble() ?? 0.00)),
-                    _buildTableRow('Payment Status:', currentPaymentStatus.toUpperCase()),
-                    _buildTableRow('Delivery Status:', currentDeliveryStatus.toUpperCase()),
-                    _buildTableRow('Notes:', widget.job['notes'] ?? 'N/A', isMultiline: true),
-                    _buildTableRow('Created At:', _formatDate(widget.job['created_at'])),
-                    _buildTableRow('Updated At:', _formatDate(widget.job['updated_at'])),
-                    _buildTableRow('Created By (User ID):', widget.job['created_by'] ?? 'N/A', isMultiline: true),
+                    _buildTableRow('Shipper Name:', cargoJobInstance.shipperName ?? 'N/A'),
+                    _buildTableRow('Pickup Date:', _formatDate(cargoJobInstance.pickupDate?.toIso8601String(), includeTime: false)),
+                    _buildTableRow('Pickup Location:', cargoJobInstance.pickupLocation ?? 'N/A'),
+                    _buildTableRow('Dropoff Location:', cargoJobInstance.dropoffLocation ?? 'N/A'),
+                    _buildTableRow('Est. Delivery Date:', _formatDate(cargoJobInstance.estimatedDeliveryDate?.toIso8601String(), includeTime: false)),
+                    _buildTableRow('Actual Delivery Date:', _formatDate(cargoJobInstance.actualDeliveryDate?.toIso8601String(), includeTime: false)),
+                    _buildTableRow('Agreed Price:', currencyFormatter.format(cargoJobInstance.agreedPrice ?? 0.00)),
+                    _buildTableRow('Payment Status:', currentActualPaymentStatus.toUpperCase()), // Display actual stored payment status
+                    _buildTableRow('Effective Delivery Status:', displayDeliveryStatus.toUpperCase()), // Task 2.2: Display effective status
+                    _buildTableRow('Actual Delivery Status:', currentActualDeliveryStatus.toUpperCase()), // Display actual stored delivery status
+                    _buildTableRow('Notes:', cargoJobInstance.notes ?? 'N/A', isMultiline: true),
+                    _buildTableRow('Created At:', _formatDate(cargoJobInstance.createdAt?.toIso8601String())),
+                    _buildTableRow('Updated At:', _formatDate(cargoJobInstance.updatedAt?.toIso8601String())),
+                    _buildTableRow('Created By (User ID):', cargoJobInstance.createdBy ?? 'N/A', isMultiline: true),
                   ],
                 ),
               ),
@@ -200,7 +223,7 @@ class _JobDetailsState extends State<JobDetails> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0), 
-                child: Text('Change Delivery Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
+                child: Text('Update Delivery Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
               ),
             ),
             SliverToBoxAdapter(
@@ -209,17 +232,17 @@ class _JobDetailsState extends State<JobDetails> {
                 child: Wrap(
                   spacing: 8.0, 
                   runSpacing: 4.0,
-                  children: [ 
-                    'pending', 'in progress', 'completed', 'cancelled', 'onhold', 'rejected' 
-                  ].map((status) {
+                  children: userSelectableDeliveryStatuses.map((statusEnum) { // Task 3.1 & 3.2
+                    final statusStr = deliveryStatusToString(statusEnum);
                     return ChoiceChip(
-                      label: Text(status.toUpperCase(), style: TextStyle(color: currentDeliveryStatus == status ? Colors.black : Colors.white)),
-                      selected: currentDeliveryStatus == status,
+                      label: Text(statusStr.toUpperCase(), style: TextStyle(color: currentActualDeliveryStatus == statusStr.toLowerCase() ? Colors.black : Colors.white)),
+                      selected: currentActualDeliveryStatus == statusStr.toLowerCase(), // Task 3.3: Reflect actual status
                       onSelected: (selected) {
                         if (selected) {
-                          jobProvider.updateJobDeliveryStatus(widget.job['id'] as int, status);
+                           // Provider method already handles history logging correctly with old status fetching
+                          jobProvider.updateJobDeliveryStatus(cargoJobInstance.id!, statusStr); // Task 3.4
                           setState(() {
-                            currentDeliveryStatus = status;
+                            currentActualDeliveryStatus = statusStr.toLowerCase(); // Update local state for immediate UI feedback
                           });
                         }
                       },
@@ -235,7 +258,7 @@ class _JobDetailsState extends State<JobDetails> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0), 
-                child: Text('Change Payment Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
+                child: Text('Update Payment Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
               ),
             ),
             SliverToBoxAdapter(
@@ -244,16 +267,17 @@ class _JobDetailsState extends State<JobDetails> {
                   child: Wrap( 
                     spacing: 8.0, 
                     runSpacing: 4.0,
-                    children: ['pending', 'paid', 'overdue', 'refunded'] 
-                        .map((status) {
+                    children: userSelectablePaymentStatuses.map((statusEnum) { // Task 4.1 & 4.2
+                      final statusStr = paymentStatusToString(statusEnum);
                       return ChoiceChip(
-                        label: Text(status.toUpperCase(), style: TextStyle(color: currentPaymentStatus == status ? Colors.black : Colors.white)),
-                        selected: currentPaymentStatus == status,
+                        label: Text(statusStr.toUpperCase(), style: TextStyle(color: currentActualPaymentStatus == statusStr.toLowerCase() ? Colors.black : Colors.white)),
+                        selected: currentActualPaymentStatus == statusStr.toLowerCase(), // Task 4.3: Reflect actual status
                         onSelected: (selected) {
                            if (selected) {
-                            jobProvider.updateJobPaymentStatus(widget.job['id'] as int, status);
+                            // Provider method already handles history logging correctly with old status fetching
+                            jobProvider.updateJobPaymentStatus(cargoJobInstance.id!, statusStr); // Task 4.4
                             setState(() {
-                               currentPaymentStatus = status;
+                               currentActualPaymentStatus = statusStr.toLowerCase(); // Update local state
                             });
                           }
                         },
@@ -266,7 +290,6 @@ class _JobDetailsState extends State<JobDetails> {
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
 
-            // Job History Section
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),

@@ -1,15 +1,11 @@
 import 'package:bizorganizer/main.dart';
-import 'package:bizorganizer/main.dart'; // Assuming supabase client is here
-import 'package:bizorganizer/stats.dart';
-import 'package:bizorganizer/main.dart'; // Assuming supabase client is here
-import 'package:bizorganizer/stats.dart'; // Will be JobStatsPage
+import 'package:bizorganizer/stats.dart'; 
 import 'package:flutter/rendering.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:bizorganizer/addjob.dart'; // Updated to AddJob
+import 'package:bizorganizer/addjob.dart'; 
 import 'package:bizorganizer/jobdetails.dart'; 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart'; // For date formatting
-// No direct import for CargoJob model needed here as we are working with Map<String, dynamic> from stream
+import 'package:intl/intl.dart'; 
 
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
@@ -29,22 +25,28 @@ class _DashboardState extends State<Dashboard> {
   int _cancelledJobsCount = 0; 
   int _overdueJobsCount = 0;   
 
+  // Task 2.1: Declare _jobsStream
+  late final Stream<List<Map<String, dynamic>>> _jobsStream;
+
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_scrollListener);
+    // Task 2.1: Initialize _jobsStream in initState
+    // 'supabase' is already a global final variable from main.dart, so we can use it directly.
+    _jobsStream = _getJobsStream(supabase); 
   }
 
   void _scrollListener() {
-    if (_scrollController.position.userScrollDirection ==
-        ScrollDirection.reverse) {
+    if (_scrollController.position.userScrollDirection == ScrollDirection.reverse) {
       if (_isFabVisible) {
-        setState(() => _isFabVisible = false); // Hide FAB when scrolling down
+        // Task 3: Ensure setState is minimal
+        setState(() { _isFabVisible = false; }); 
       }
-    } else if (_scrollController.position.userScrollDirection ==
-        ScrollDirection.forward) {
+    } else if (_scrollController.position.userScrollDirection == ScrollDirection.forward) {
       if (!_isFabVisible) {
-        setState(() => _isFabVisible = true); // Show FAB when scrolling up
+        // Task 3: Ensure setState is minimal
+        setState(() { _isFabVisible = true; }); 
       }
     }
   }
@@ -60,20 +62,21 @@ class _DashboardState extends State<Dashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Dashboard', style: TextStyle(color: Colors.white)),
+        title: const Text('Dashboard', style: TextStyle(color: Colors.white)), // Added const
         centerTitle: true,
         backgroundColor: Theme.of(context).colorScheme.primary,
+        iconTheme: const IconThemeData(color: Colors.white), // Added const and themed color
       ),
       body: SafeArea(
         child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: _getJobsStream(supabase), // Updated stream method name
+          stream: _jobsStream, // Task 2.2: Use the instance variable
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
             }
 
             if (snapshot.hasError) {
-              print('Dashboard Stream Error: ${snapshot.error}'); // Log error
+              print('Dashboard Stream Error: ${snapshot.error}'); 
               return const Center(child: Text('Error loading jobs. Please check connection.'));
             }
 
@@ -81,16 +84,12 @@ class _DashboardState extends State<Dashboard> {
               return const Center(child: Text('No jobs available.'));
             }
 
-            final jobs = snapshot.data!; // Renamed for clarity
+            final jobs = snapshot.data!; 
 
-            // Calculate counts once using new field names
             _totalJobsCount = jobs.length;
-            // Assuming 'pending' and 'in progress' are valid delivery_status values
             _pendingJobsCount = jobs.where((job) => job['delivery_status']?.toString().toLowerCase() == 'pending' || job['delivery_status']?.toString().toLowerCase() == 'in progress').length;
             _completedJobsCount = jobs.where((job) => job['delivery_status']?.toString().toLowerCase() == 'completed').length;
-            // Assuming 'cancelled' and 'refunded' are valid delivery_status values
             _cancelledJobsCount = jobs.where((job) => job['delivery_status']?.toString().toLowerCase() == 'cancelled' || job['delivery_status']?.toString().toLowerCase() == 'refunded').length;
-            // Assuming 'overdue' and 'onhold' are valid delivery_status values
             _overdueJobsCount = jobs.where((job) => job['delivery_status']?.toString().toLowerCase() == 'overdue' || job['delivery_status']?.toString().toLowerCase() == 'onhold').length;
 
             return CustomScrollView(
@@ -101,21 +100,25 @@ class _DashboardState extends State<Dashboard> {
                     Container(
                       margin: const EdgeInsets.all(16.0),
                       height: MediaQuery.of(context).size.height * 0.3,
-                      color: Colors.grey, // Placeholder color
+                      decoration: BoxDecoration( // Added decoration for placeholder
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Center(child: Icon(Icons.bar_chart, size: 100, color: Colors.grey.shade500)), // Placeholder content
                     ),
                     Positioned(
                       top: 20,
                       right: 10,
                       child: IconButton(
                           iconSize: 40,
+                          color: Theme.of(context).colorScheme.primary, // Themed icon
                           onPressed: () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                  builder: (_) => JobStatsPage())), // Updated to JobStatsPage
-                          icon: const Icon(Icons.output_rounded)), 
+                                  builder: (_) => JobStatsPage())), 
+                          icon: const Icon(Icons.insights_rounded)), // Changed icon and added const
                     )
                   ]),
                 ),
-                // Summary Cards Section (Scrollable horizontally)
                 SliverPadding(
                   padding: const EdgeInsets.all(16.0),
                   sliver: SliverList(
@@ -124,29 +127,28 @@ class _DashboardState extends State<Dashboard> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            _buildSummaryCard(context, 'Total Jobs', _totalJobsCount, Colors.blue), // Updated label
+                            _buildSummaryCard(context, 'Total Jobs', _totalJobsCount, Colors.blue.shade700), 
                             const SizedBox(width: 8),
-                            _buildSummaryCard(context, 'Pending', _pendingJobsCount, Colors.orange),
+                            _buildSummaryCard(context, 'Pending', _pendingJobsCount, Colors.orange.shade700),
                             const SizedBox(width: 8),
-                            _buildSummaryCard(context, 'Completed', _completedJobsCount, Colors.green),
+                            _buildSummaryCard(context, 'Completed', _completedJobsCount, Colors.green.shade700),
                             const SizedBox(width: 8),
-                            _buildSummaryCard(context, 'Cancelled', _cancelledJobsCount, Colors.red),
+                            _buildSummaryCard(context, 'Cancelled', _cancelledJobsCount, Colors.red.shade700),
                             const SizedBox(width: 8),
-                            _buildSummaryCard(context, 'Overdue', _overdueJobsCount, Colors.purple),
+                            _buildSummaryCard(context, 'Overdue', _overdueJobsCount, Colors.purple.shade700),
                           ],
                         ),
                       ),
                     ]),
                   ),
                 ),
-                // Job List Section
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (BuildContext context, int index) {
-                        final job = jobs[index]; // Use 'job'
-                        return _buildJobCard(context, job); // Updated card builder name
+                        final job = jobs[index]; 
+                        return _buildJobCard(context, job); 
                       },
                       childCount: _totalJobsCount, 
                     ),
@@ -158,36 +160,35 @@ class _DashboardState extends State<Dashboard> {
         ),
       ),
       floatingActionButton: AnimatedSlide(
-        offset: _isFabVisible ? Offset(0, 0) : Offset(1, 0),
-        duration: Duration(milliseconds: 300),
+        offset: _isFabVisible ? Offset.zero : const Offset(0, 2), // Slide down
+        duration: const Duration(milliseconds: 300),
         child: AnimatedOpacity(
           opacity: _isFabVisible ? 1.0 : 0.0,
-          duration: Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 300),
           child: FloatingActionButton.extended(
             onPressed: () {
               Navigator.of(context)
-                  .push(MaterialPageRoute(builder: (_) => AddJob())); // Updated to AddJob
+                  .push(MaterialPageRoute(builder: (_) => const AddJob())); // Added const
             },
             label: const Text('Add New Job'), 
             icon: const Icon(Icons.add),
+            backgroundColor: Theme.of(context).colorScheme.secondary, // Themed FAB
+            foregroundColor: Theme.of(context).colorScheme.onSecondary,
           ),
         ),
       ),
     );
   }
 
-  // Get stream of jobs from Supabase
-  Stream<List<Map<String, dynamic>>> _getJobsStream(SupabaseClient supabase) { // Renamed method
-    final stream = supabase
-        .from('cargo_jobs')  // Updated table name
+  Stream<List<Map<String, dynamic>>> _getJobsStream(SupabaseClient supabaseInstance) { // Ensure supabaseInstance is used
+    final stream = supabaseInstance // Use passed instance
+        .from('cargo_jobs')  
         .stream(primaryKey: ['id'])
         .order('id', ascending: false) 
         .map((rows) => rows.map((row) => row as Map<String, dynamic>).toList());
-
     return stream;
   }
 
-  // Summary card widget - remains largely the same, titles are generic
   Widget _buildSummaryCard(BuildContext context, String title, int count, Color color) {
     return Card(
       elevation: 2,
@@ -216,17 +217,17 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  // Job card widget (formerly _buildTripCard)
-  Widget _buildJobCard(BuildContext context, Map<String, dynamic> job) { // Renamed parameter
+  Widget _buildJobCard(BuildContext context, Map<String, dynamic> job) { 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
+      elevation: 2, // Added some elevation
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       child: ListTile(
         onTap: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => JobDetails(job: job), // Updated to JobDetails
+              builder: (_) => JobDetails(job: job), 
             ),
           );
         },
@@ -236,18 +237,21 @@ class _DashboardState extends State<Dashboard> {
           size: 28, 
         ),
         title: Text(
-          job['shipper_name'] ?? 'N/A Shipper', // Updated field name
+          job['shipper_name'] ?? 'N/A Shipper', 
           style: const TextStyle(fontWeight: FontWeight.bold), 
         ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Date: ${_formatJobDate(job['pickup_date'] ?? job['created_at'])}"), // Added formatting
+            const SizedBox(height: 4),
+            Text("Date: ${_formatJobDate(job['pickup_date'] ?? job['created_at'])}"), 
+            const SizedBox(height: 2),
             Text("Status: ${job['delivery_status'] ?? 'N/A'}", 
                 style: TextStyle(
                   color: _getStatusColor(job['delivery_status']?.toString()), 
                   fontWeight: FontWeight.bold,
                 )),
+            const SizedBox(height: 2),
             Text("Payment: ${job['payment_status'] ?? 'N/A'}"), 
           ],
         ),
@@ -256,7 +260,7 @@ class _DashboardState extends State<Dashboard> {
           crossAxisAlignment: CrossAxisAlignment.end, 
           children: [
             Text(
-              "\$${(job['agreed_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}", // Updated field name and type handling
+              "\$${(job['agreed_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}", 
               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green),
             ),
           ],
@@ -265,36 +269,33 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  // Helper to get color based on status
-  // Helper to format date strings for display
   String _formatJobDate(String? dateString) {
     if (dateString == null || dateString.isEmpty) return 'N/A';
     try {
       final dateTime = DateTime.parse(dateString);
-      return DateFormat('MMM d, yyyy').format(dateTime); // e.g., Jan 1, 2023
+      return DateFormat('MMM d, yyyy').format(dateTime); 
     } catch (e) {
-      return dateString; // Return original if parsing fails
+      return dateString; 
     }
   }
 
   Color _getStatusColor(String? status) {
     switch (status?.toLowerCase()) {
-      // delivery_status values
-      case 'delivered': // Assuming 'delivered' might be used for completed
+      case 'delivered': 
       case 'completed':
-        return Colors.green;
+        return Colors.green.shade700; // Darker green
       case 'pending':
-      case 'in progress': // Map 'in progress' to orange as well
-        return Colors.orange;
+      case 'in progress': 
+        return Colors.orange.shade700; // Darker orange
       case 'cancelled':
-      case 'refunded': // Map 'refunded' to red
-        return Colors.red;
-      case 'onhold': // Keep yellow for onhold
-        return Colors.yellow;
-      case 'rejected': // Keep grey for rejected
-        return Colors.grey;
+      case 'refunded': 
+        return Colors.red.shade700; // Darker red
+      case 'onhold': 
+        return Colors.yellow.shade800; // Darker yellow
+      case 'rejected': 
+        return Colors.grey.shade600; // Darker grey
       default:
-        return Colors.black;
+        return Theme.of(context).textTheme.bodySmall?.color ?? Colors.black; // Default text color
     }
   }
 }

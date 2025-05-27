@@ -1,6 +1,7 @@
 import 'package:bizorganizer/main.dart'; // Assuming 'supabase' client is available from here
 import 'package:bizorganizer/models/cargo_job.dart'; 
 import 'package:bizorganizer/models/job_history_entry.dart'; // Import for JobHistoryEntry
+import 'package:bizorganizer/models/status_constants.dart'; // Task 1: Import Status Constants
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -39,21 +40,26 @@ class CargoJobProvider extends ChangeNotifier {
       List<Map<String, dynamic>> jobsData = (response as List).cast<Map<String, dynamic>>();
       _jobs = jobsData;
 
-      _completedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == 'completed').toList();
+      _completedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Completed).toLowerCase()).toList();
       _pendingJobs = jobsData.where((job) => 
-        job['delivery_status']?.toString().toLowerCase() == 'pending' || 
-        job['delivery_status']?.toString().toLowerCase() == 'in progress'
+        job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Pending).toLowerCase() || 
+        job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.InProgress).toLowerCase()
       ).toList();
       _cancelledJobs = jobsData.where((job) => 
-        job['delivery_status']?.toString().toLowerCase() == 'cancelled' ||
-        job['delivery_status']?.toString().toLowerCase() == 'refunded'
+        job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Cancelled).toLowerCase() ||
+        job['delivery_status']?.toString().toLowerCase() == 'refunded' // Assuming 'refunded' delivery is a type of cancellation
       ).toList();
-      _onHoldJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == 'onhold').toList();
-      _rejectedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == 'rejected').toList();
+      _onHoldJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Onhold).toLowerCase()).toList();
+      _rejectedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Rejected).toLowerCase()).toList();
+      // Note: 'Overdue' and 'Scheduled' for delivery_status might need specific handling if they are primary statuses from DB
+      // For now, they are handled by effectiveDeliveryStatus or directly if set.
 
-      _paidJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == 'paid').toList();
-      _pendingPaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == 'pending').toList();
-      _overduePaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == 'overdue').toList();
+      _paidJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Paid).toLowerCase()).toList();
+      _pendingPaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Pending).toLowerCase()).toList();
+      _overduePaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Overdue).toLowerCase()).toList();
+      // Note: 'Refunded' and 'Cancelled' for payment_status
+      // _cancelledPaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Cancelled).toLowerCase()).toList();
+
 
       notifyListeners();
     } catch (e) {
@@ -83,29 +89,47 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> editJob(int jobId, CargoJob updatedJob) async {
+  Future<void> editJob(int jobId, CargoJob updatedJobData) async { // Renamed for clarity
     try {
-      // Fetch current job to compare for history logging
-      final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
-      final currentJob = CargoJob.fromJson(currentJobData);
+      final currentJobSnapshot = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
+      final currentJob = CargoJob.fromJson(currentJobSnapshot);
+      final userId = _supabase.auth.currentUser?.id ?? 'system_edit';
 
-      await _supabase.from('cargo_jobs').update(updatedJob.toJson()).eq('id', jobId);
+      // Prepare the data for update
+      Map<String, dynamic> updatePayload = updatedJobData.toJson();
+
+      // Task 3.2: If delivery status is being set to Cancelled, also set payment status to Cancelled
+      if (updatedJobData.deliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
+        updatePayload['payment_status'] = paymentStatusToString(PaymentStatus.Cancelled);
+      }
+      
+      await _supabase.from('cargo_jobs').update(updatePayload).eq('id', jobId);
       
       // Log changes to history
-      // This is a simplified example; a more robust solution would iterate over changed fields.
-      // For now, let's assume we know which fields are editable and might change.
-      // A more generic approach would compare currentJob and updatedJob field by field.
+      // Compare currentJob (before update) with updatedJobData (what was intended for update)
+      // and updatePayload (what was actually sent, including auto payment cancellation)
+      
+      final fieldsToCompare = {
+        'shipper_name': {'old': currentJob.shipperName, 'new': updatedJobData.shipperName},
+        'payment_status': {'old': currentJob.paymentStatus, 'new': updatePayload['payment_status']}, // Compare with actual payload
+        'delivery_status': {'old': currentJob.deliveryStatus, 'new': updatedJobData.deliveryStatus},
+        'pickup_location': {'old': currentJob.pickupLocation, 'new': updatedJobData.pickupLocation},
+        'dropoff_location': {'old': currentJob.dropoffLocation, 'new': updatedJobData.dropoffLocation},
+        'pickup_date': {'old': currentJob.pickupDate?.toIso8601String(), 'new': updatedJobData.pickupDate?.toIso8601String()},
+        'estimated_delivery_date': {'old': currentJob.estimatedDeliveryDate?.toIso8601String(), 'new': updatedJobData.estimatedDeliveryDate?.toIso8601String()},
+        'actual_delivery_date': {'old': currentJob.actualDeliveryDate?.toIso8601String(), 'new': updatedJobData.actualDeliveryDate?.toIso8601String()},
+        'agreed_price': {'old': currentJob.agreedPrice?.toString(), 'new': updatedJobData.agreedPrice?.toString()},
+        'notes': {'old': currentJob.notes, 'new': updatedJobData.notes},
+        'receipt_url': {'old': currentJob.receiptUrl, 'new': updatedJobData.receiptUrl},
+      };
 
-      if (currentJob.deliveryStatus != updatedJob.deliveryStatus && updatedJob.deliveryStatus != null) {
-        await addJobHistoryRecord(jobId, 'delivery_status', currentJob.deliveryStatus ?? '', updatedJob.deliveryStatus!, updatedJob.createdBy ?? 'system');
+      for (var field in fieldsToCompare.entries) {
+        String oldValue = field.value['old'] ?? '';
+        String newValue = field.value['new'] ?? '';
+        if (oldValue != newValue) {
+          await addJobHistoryRecord(jobId, field.key, oldValue, newValue, userId);
+        }
       }
-      if (currentJob.paymentStatus != updatedJob.paymentStatus && updatedJob.paymentStatus != null) {
-         await addJobHistoryRecord(jobId, 'payment_status', currentJob.paymentStatus ?? '', updatedJob.paymentStatus!, updatedJob.createdBy ?? 'system');
-      }
-      if (currentJob.agreedPrice != updatedJob.agreedPrice && updatedJob.agreedPrice != null) {
-         await addJobHistoryRecord(jobId, 'agreed_price', currentJob.agreedPrice?.toString() ?? '', updatedJob.agreedPrice!.toString(), updatedJob.createdBy ?? 'system');
-      }
-      // Add more field comparisons as needed...
 
       await fetchJobsData();
       print('Job updated successfully');
@@ -114,17 +138,40 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateJobDeliveryStatus(int jobId, String newStatus) async {
+  Future<void> updateJobDeliveryStatus(int jobId, String newDeliveryStatus) async { // oldDeliveryStatus removed from params
     try {
-      final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
-      final oldStatus = currentJobData['delivery_status'] as String?;
-      final userId = _supabase.auth.currentUser?.id ?? 'system'; // Get current user or default to system
+      final currentJobData = await _supabase.from('cargo_jobs').select('delivery_status, payment_status').eq('id', jobId).single();
+      final oldDeliveryStatus = currentJobData['delivery_status'] as String? ?? deliveryStatusToString(DeliveryStatus.Pending);
+      final String currentPaymentStatus = currentJobData['payment_status'] as String? ?? paymentStatusToString(PaymentStatus.Pending);
+      final userId = _supabase.auth.currentUser?.id ?? 'system_status_change';
 
-      await _supabase.from('cargo_jobs').update({'delivery_status': newStatus}).eq('id', jobId);
-      
-      if (oldStatus != newStatus) {
-        await addJobHistoryRecord(jobId, 'delivery_status', oldStatus ?? '', newStatus, userId);
+      Map<String, dynamic> updatePayload = {'delivery_status': newDeliveryStatus};
+
+      // Task 2.2: If new delivery status is Cancelled, also set payment status to Cancelled
+      if (newDeliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
+        if (currentPaymentStatus != paymentStatusToString(PaymentStatus.Cancelled)) {
+          updatePayload['payment_status'] = paymentStatusToString(PaymentStatus.Cancelled);
+        }
       }
+
+      await _supabase.from('cargo_jobs').update(updatePayload).eq('id', jobId);
+      
+      // Log delivery_status change
+      if (oldDeliveryStatus != newDeliveryStatus) {
+        await addJobHistoryRecord(jobId, 'delivery_status', oldDeliveryStatus, newDeliveryStatus, userId);
+      }
+
+      // Log payment_status change if it was auto-updated
+      if (updatePayload.containsKey('payment_status') && currentPaymentStatus != updatePayload['payment_status']) {
+         await addJobHistoryRecord(
+            jobId,
+            'payment_status',
+            currentPaymentStatus, // This is the oldPaymentStatus before this specific operation
+            updatePayload['payment_status'] as String,
+            userId // or a more specific changedBy like 'system_auto_cancel_from_delivery'
+          );
+      }
+
       await fetchJobsData();
       print('Job delivery status updated successfully for job $jobId');
     } catch (e) {
@@ -136,7 +183,7 @@ class CargoJobProvider extends ChangeNotifier {
     try {
       final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
       final oldStatus = currentJobData['payment_status'] as String?;
-      final userId = _supabase.auth.currentUser?.id ?? 'system';
+      final userId = _supabase.auth.currentUser?.id ?? 'system_status_change';
 
       await _supabase.from('cargo_jobs').update({'payment_status': newStatus}).eq('id', jobId);
 
@@ -155,24 +202,22 @@ class CargoJobProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // New method to fetch job history
   Future<List<JobHistoryEntry>> fetchJobHistory(int jobId) async {
     try {
       final response = await _supabase
           .from('job_history')
           .select()
           .eq('job_id', jobId)
-          .order('changed_at', ascending: false); // Newest first
+          .order('changed_at', ascending: false); 
 
       final List<dynamic> data = response as List<dynamic>;
       return data.map((json) => JobHistoryEntry.fromJson(json as Map<String, dynamic>)).toList();
     } catch (e) {
       print('Error fetching job history for job $jobId: $e');
-      return []; // Return empty list on error
+      return []; 
     }
   }
 
-  // New simpler method to add a job history record
   Future<void> addJobHistoryRecord(int jobId, String fieldChanged, String oldValue, String newValue, String changedBy) async {
     try {
       final historyEntry = JobHistoryEntry(
@@ -180,11 +225,11 @@ class CargoJobProvider extends ChangeNotifier {
         fieldChanged: fieldChanged,
         oldValue: oldValue,
         newValue: newValue,
-        changedAt: DateTime.now().toIso8601String(), // Set current time
+        changedAt: DateTime.now().toIso8601String(), 
         changedBy: changedBy,
       );
       await _supabase.from('job_history').insert(historyEntry.toJson());
-      print('Job history entry added successfully for job $jobId: $fieldChanged');
+      print('Job history entry added successfully for job $jobId: $fieldChanged from "$oldValue" to "$newValue" by $changedBy');
     } catch (e) {
       print('Error adding job history entry for job $jobId: $e');
     }
