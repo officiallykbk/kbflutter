@@ -8,6 +8,8 @@ import 'package:intl/intl.dart';
 import 'package:bizorganizer/models/job_history_entry.dart'; 
 import 'package:bizorganizer/addjob.dart'; 
 import 'package:bizorganizer/models/cargo_job.dart'; 
+import 'package:bizorganizer/models/status_constants.dart';
+import 'package:bizorganizer/utils/us_states_data.dart'; // Added import
 
 class JobDetails extends StatefulWidget {
   final Map<String, dynamic> job; 
@@ -19,19 +21,45 @@ class JobDetails extends StatefulWidget {
 }
 
 class _JobDetailsState extends State<JobDetails> {
-  late String currentDeliveryStatus;
-  late String currentPaymentStatus;
+  late String currentActualDeliveryStatus; 
+  late String currentActualPaymentStatus;  
 
   List<JobHistoryEntry> _historyEntries = [];
   bool _isLoadingHistory = true;
 
   final NumberFormat currencyFormatter = NumberFormat.currency(locale: 'en_US', symbol: '\$');
 
+  // Task 2.2: Update userSelectableDeliveryStatuses
+  final List<DeliveryStatus> userSelectableDeliveryStatuses = [
+    DeliveryStatus.Scheduled,
+    DeliveryStatus.InProgress,
+    DeliveryStatus.Delivered, 
+    DeliveryStatus.Cancelled, 
+  ];
+
+  // Payment status options remain broader as per previous implementation, not changed by this task
+  final List<PaymentStatus> userSelectablePaymentStatuses = [
+    PaymentStatus.Pending,
+    PaymentStatus.Paid,
+    PaymentStatus.Cancelled,
+    PaymentStatus.Refunded, 
+    PaymentStatus.Overdue,  
+    PaymentStatus.Partial,  
+  ];
+
+
   @override
   void initState() {
     super.initState();
-    currentDeliveryStatus = widget.job['delivery_status']?.toString().toLowerCase() ?? 'pending';
-    currentPaymentStatus = widget.job['payment_status']?.toString().toLowerCase() ?? 'pending';
+    DeliveryStatus? initialDeliveryEnum = deliveryStatusFromString(widget.job['delivery_status']?.toString());
+    currentActualDeliveryStatus = initialDeliveryEnum != null 
+                                  ? deliveryStatusToString(initialDeliveryEnum) 
+                                  : deliveryStatusToString(DeliveryStatus.Scheduled);
+
+    PaymentStatus? initialPaymentEnum = paymentStatusFromString(widget.job['payment_status']?.toString());
+    currentActualPaymentStatus = initialPaymentEnum != null
+                                 ? paymentStatusToString(initialPaymentEnum)
+                                 : paymentStatusToString(PaymentStatus.Pending);
     _fetchHistory();
   }
 
@@ -83,6 +111,18 @@ class _JobDetailsState extends State<JobDetails> {
     }
   }
 
+  String _getFullStateName(String? abbr) {
+    if (abbr == null || abbr.isEmpty) return 'N/A';
+    try {
+      final state = usStatesAndAbbreviations.firstWhere(
+        (s) => s.abbr.toLowerCase() == abbr.toLowerCase(),
+      );
+      return state.name;
+    } catch (e) { // Catches if not found by firstWhere or other errors
+      return abbr; // Return the original abbreviation if not found or on error
+    }
+  }
+
   TableRow _buildTableRow(String label, String value, {bool isMultiline = false}) {
     return TableRow(
       children: [
@@ -107,6 +147,9 @@ class _JobDetailsState extends State<JobDetails> {
   @override
   Widget build(BuildContext context) {
     final jobProvider = Provider.of<CargoJobProvider>(context);
+    final CargoJob cargoJobInstance = CargoJob.fromJson(widget.job); 
+
+    String displayEffectiveDeliveryStatus = cargoJobInstance.effectiveDeliveryStatus ?? deliveryStatusToString(DeliveryStatus.Scheduled);
     
     return Scaffold(
       appBar: AppBar(
@@ -116,39 +159,15 @@ class _JobDetailsState extends State<JobDetails> {
         iconTheme: IconThemeData(color: Theme.of(context).colorScheme.onPrimary),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => AddJob(job: CargoJob.fromJson(widget.job), isEditing: true), 
-                ),
-              ).then((value) async { 
-                if (value == true) { 
-                  await jobProvider.fetchJobsData();
-                  final updatedJobData = jobProvider.jobs.firstWhere((j) => j['id'] == widget.job['id'], orElse: () => widget.job);
-                  if (mounted) {
-                    setState(() {
-                      currentDeliveryStatus = updatedJobData['delivery_status']?.toString().toLowerCase() ?? 'pending';
-                      currentPaymentStatus = updatedJobData['payment_status']?.toString().toLowerCase() ?? 'pending';
-                      // Refresh widget.job with new data if possible, or rely on parent to pass updated map
-                      // This is a simplification; a more robust solution might involve a direct way to update widget.job
-                      // or making JobDetails listen to a specific job ID from the provider.
-                      (widget as JobDetails).job.clear();
-                      (widget as JobDetails).job.addAll(updatedJobData);
-
-                      _fetchHistory(); 
-                    });
-                  }
-                }
-              });
-            },
+            icon: const Icon(Icons.delete, color: Colors.redAccent),
+            onPressed: _confirmDeleteJob, // Call the new delete confirmation method
           ),
         ],
       ),
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            if (widget.job['receipt_url'] != null && widget.job['receipt_url'].isNotEmpty) 
+            if (cargoJobInstance.receiptUrl != null && cargoJobInstance.receiptUrl!.isNotEmpty) 
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
@@ -161,10 +180,10 @@ class _JobDetailsState extends State<JobDetails> {
                           onTap: () => Navigator.of(context).push(
                               MaterialPageRoute(
                                   builder: (_) => FullScreenImage(
-                                      imageUrl: widget.job['receipt_url']))), 
+                                      imageUrl: cargoJobInstance.receiptUrl!))), 
                           child: Hero(
-                              tag: widget.job['receipt_url'], 
-                              child: CacheImage(imageUrl: widget.job['receipt_url']))) 
+                              tag: cargoJobInstance.receiptUrl!, 
+                              child: CacheImage(imageUrl: cargoJobInstance.receiptUrl!))) 
                     ],
                   ),
                 ),
@@ -179,19 +198,18 @@ class _JobDetailsState extends State<JobDetails> {
                     1: FlexColumnWidth(), 
                   },
                   children: [
-                    _buildTableRow('Shipper Name:', widget.job['shipper_name'] ?? 'N/A'),
-                    _buildTableRow('Pickup Date:', _formatDate(widget.job['pickup_date'], includeTime: false)),
-                    _buildTableRow('Pickup Location:', widget.job['pickup_location'] ?? 'N/A'),
-                    _buildTableRow('Dropoff Location:', widget.job['dropoff_location'] ?? 'N/A'),
-                    _buildTableRow('Est. Delivery Date:', _formatDate(widget.job['estimated_delivery_date'], includeTime: false)),
-                    _buildTableRow('Actual Delivery Date:', _formatDate(widget.job['actual_delivery_date'], includeTime: false)),
-                    _buildTableRow('Agreed Price:', currencyFormatter.format((widget.job['agreed_price'] as num?)?.toDouble() ?? 0.00)),
-                    _buildTableRow('Payment Status:', currentPaymentStatus.toUpperCase()),
-                    _buildTableRow('Delivery Status:', currentDeliveryStatus.toUpperCase()),
-                    _buildTableRow('Notes:', widget.job['notes'] ?? 'N/A', isMultiline: true),
-                    _buildTableRow('Created At:', _formatDate(widget.job['created_at'])),
-                    _buildTableRow('Updated At:', _formatDate(widget.job['updated_at'])),
-                    _buildTableRow('Created By (User ID):', widget.job['created_by'] ?? 'N/A', isMultiline: true),
+                    _buildTableRow('Shipper Name:', cargoJobInstance.shipperName ?? 'N/A'),
+                    _buildTableRow('Pickup Date:', _formatDate(cargoJobInstance.pickupDate?.toIso8601String(), includeTime: false)),
+                    _buildTableRow('Pickup Location:', _getFullStateName(cargoJobInstance.pickupLocation)),
+                    _buildTableRow('Dropoff Location:', _getFullStateName(cargoJobInstance.dropoffLocation)),
+                    _buildTableRow('Est. Delivery Date:', _formatDate(cargoJobInstance.estimatedDeliveryDate?.toIso8601String(), includeTime: false)),
+                    _buildTableRow('Actual Delivery Date:', _formatDate(cargoJobInstance.actualDeliveryDate?.toIso8601String(), includeTime: false)),
+                    _buildTableRow('Agreed Price:', currencyFormatter.format(cargoJobInstance.agreedPrice ?? 0.00)),
+                    _buildTableRow('Payment Status:', currentActualPaymentStatus.toUpperCase()), 
+                    _buildTableRow('Effective Delivery Status:', displayEffectiveDeliveryStatus.toUpperCase()), 
+                    _buildTableRow('Actual Delivery Status:', currentActualDeliveryStatus.toUpperCase()), 
+                    _buildTableRow('Notes:', cargoJobInstance.notes ?? 'N/A', isMultiline: true),
+                    _buildTableRow('Updated At:', _formatDate(cargoJobInstance.updatedAt?.toIso8601String())),
                   ],
                 ),
               ),
@@ -200,7 +218,7 @@ class _JobDetailsState extends State<JobDetails> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0), 
-                child: Text('Change Delivery Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
+                child: Text('Update Delivery Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
               ),
             ),
             SliverToBoxAdapter(
@@ -209,18 +227,30 @@ class _JobDetailsState extends State<JobDetails> {
                 child: Wrap(
                   spacing: 8.0, 
                   runSpacing: 4.0,
-                  children: [ 
-                    'pending', 'in progress', 'completed', 'cancelled', 'onhold', 'rejected' 
-                  ].map((status) {
+                  children: userSelectableDeliveryStatuses.map((statusEnum) { 
+                    final statusStr = deliveryStatusToString(statusEnum);
                     return ChoiceChip(
-                      label: Text(status.toUpperCase(), style: TextStyle(color: currentDeliveryStatus == status ? Colors.black : Colors.white)),
-                      selected: currentDeliveryStatus == status,
-                      onSelected: (selected) {
+                      label: Text(statusStr.toUpperCase(), style: TextStyle(color: currentActualDeliveryStatus == statusStr.toLowerCase() ? Colors.black : Colors.white)),
+                      selected: currentActualDeliveryStatus == statusStr.toLowerCase(),
+                      onSelected: (selected) async { // Made async
                         if (selected) {
-                          jobProvider.updateJobDeliveryStatus(widget.job['id'] as int, status);
-                          setState(() {
-                            currentDeliveryStatus = status;
-                          });
+                          try {
+                            await jobProvider.updateJobDeliveryStatus(cargoJobInstance.id!, statusStr);
+                            if (mounted) {
+                              setState(() {
+                                currentActualDeliveryStatus = statusStr.toLowerCase();
+                              });
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error updating delivery status: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
                         }
                       },
                       selectedColor: Theme.of(context).colorScheme.secondary,
@@ -235,7 +265,7 @@ class _JobDetailsState extends State<JobDetails> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0), 
-                child: Text('Change Payment Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
+                child: Text('Update Payment Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
               ),
             ),
             SliverToBoxAdapter(
@@ -244,17 +274,30 @@ class _JobDetailsState extends State<JobDetails> {
                   child: Wrap( 
                     spacing: 8.0, 
                     runSpacing: 4.0,
-                    children: ['pending', 'paid', 'overdue', 'refunded'] 
-                        .map((status) {
+                    children: userSelectablePaymentStatuses.map((statusEnum) { 
+                      final statusStr = paymentStatusToString(statusEnum);
                       return ChoiceChip(
-                        label: Text(status.toUpperCase(), style: TextStyle(color: currentPaymentStatus == status ? Colors.black : Colors.white)),
-                        selected: currentPaymentStatus == status,
-                        onSelected: (selected) {
-                           if (selected) {
-                            jobProvider.updateJobPaymentStatus(widget.job['id'] as int, status);
-                            setState(() {
-                               currentPaymentStatus = status;
-                            });
+                        label: Text(statusStr.toUpperCase(), style: TextStyle(color: currentActualPaymentStatus == statusStr.toLowerCase() ? Colors.black : Colors.white)),
+                      selected: currentActualPaymentStatus == statusStr.toLowerCase(),
+                      onSelected: (selected) async { // Made async
+                        if (selected) {
+                          try {
+                            await jobProvider.updateJobPaymentStatus(cargoJobInstance.id!, statusStr);
+                            if (mounted) {
+                              setState(() {
+                                currentActualPaymentStatus = statusStr.toLowerCase();
+                              });
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Error updating payment status: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
                           }
                         },
                         selectedColor: Theme.of(context).colorScheme.secondary,
@@ -266,7 +309,6 @@ class _JobDetailsState extends State<JobDetails> {
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
 
-            // Job History Section
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
@@ -315,6 +357,105 @@ class _JobDetailsState extends State<JobDetails> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _confirmDeleteJob() async {
+    final TextEditingController deleteConfirmController = TextEditingController();
+    final GlobalKey<FormFieldState<String>> confirmKey = GlobalKey<FormFieldState<String>>(); // For validation
+    // isConfirmed is managed locally by StatefulBuilders or by checking controller directly.
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false, // User must tap button!
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Confirm Deletion'),
+          content: StatefulBuilder( // Use StatefulBuilder to update button state
+            builder: (BuildContext context, StateSetter setState) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text("To delete this job, please type 'delete this' in the box below."),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    key: confirmKey,
+                    controller: deleteConfirmController,
+                    decoration: const InputDecoration(
+                      labelText: "Type 'delete this'",
+                      border: OutlineInputBorder(),
+                    ),
+                    autofocus: true,
+                    onChanged: (text) {
+                      // This setState is for the StatefulBuilder around the Column (dialog content)
+                      // It ensures the TextFormField validator is re-run if needed
+                      // and the button's StatefulBuilder will pick up the controller's new text.
+                      setState(() {}); 
+                      // Also explicitly validate to show error message dynamically
+                      confirmKey.currentState?.validate(); 
+                    },
+                    validator: (value) {
+                      if (value != 'delete this') {
+                        return "Text does not match.";
+                      }
+                      return null;
+                    },
+                  ),
+                ],
+              );
+            }
+          ),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+            ),
+            StatefulBuilder( // To enable/disable the confirm button
+               builder: (BuildContext context, StateSetter setState) {
+                 bool currentButtonEnabledState = deleteConfirmController.text == 'delete this';
+
+                 return TextButton(
+                   child: const Text('Confirm Delete', style: TextStyle(color: Colors.redAccent)),
+                   onPressed: currentButtonEnabledState ? () async {
+                     final int? jobId = widget.job['id'] as int?;
+                     if (jobId != null) {
+                       try {
+                         final provider = Provider.of<CargoJobProvider>(this.context, listen: false); // Use this.context for provider
+                         await provider.removeJob(jobId);
+                         
+                         Navigator.of(dialogContext).pop(); // Close the dialog
+                         if (mounted) {
+                            Navigator.of(this.context).pop(true); // Pop JobDetails screen, signal success (use this.context)
+                            ScaffoldMessenger.of(this.context).showSnackBar( //use this.context
+                              const SnackBar(content: Text('Job deleted successfully'), backgroundColor: Colors.green),
+                            );
+                         }
+                       } catch (e) {
+                         Navigator.of(dialogContext).pop(); // Close the dialog
+                         if (mounted) {
+                           ScaffoldMessenger.of(this.context).showSnackBar( //use this.context
+                             SnackBar(content: Text('Error deleting job: $e'), backgroundColor: Colors.red),
+                           );
+                         }
+                       }
+                     } else {
+                        Navigator.of(dialogContext).pop();
+                         if (mounted) {
+                           ScaffoldMessenger.of(this.context).showSnackBar( //use this.context
+                             const SnackBar(content: Text('Error: Job ID not found.'), backgroundColor: Colors.red),
+                           );
+                         }
+                     }
+                   } : null, // Disable button if text doesn't match
+                 );
+               }
+            ),
+          ],
+        );
+      },
     );
   }
 }

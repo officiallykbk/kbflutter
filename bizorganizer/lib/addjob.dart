@@ -1,37 +1,23 @@
 import 'package:bizorganizer/main.dart';
 import 'package:bizorganizer/models/reusables.dart';
-import 'package:bizorganizer/models/cargo_job.dart'; // Updated import
+import 'package:bizorganizer/models/cargo_job.dart'; 
 import 'package:bizorganizer/providers/orders_providers.dart'; 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart'; 
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
+import 'package:bizorganizer/models/status_constants.dart'; 
+import 'package:bizorganizer/utils/us_states_data.dart'; // Task 1: Import us_states_data.dart
 
-const List<String> usStates = [
-  "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado",
-  "Connecticut", "Delaware", "Florida", "Georgia", "Hawaii", "Idaho",
-  "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana",
-  "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota",
-  "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada",
-  "New Hampshire", "New Jersey", "New Mexico", "New York",
-  "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon",
-  "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota",
-  "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington",
-  "West Virginia", "Wisconsin", "Wyoming"
-];
+// Task 3: Remove the old usStates list
+// const List<String> usStates = [ ... ]; 
 
-// Delivery Status Options
-const List<String> deliveryStatusOptions = [
-  'pending', 'in progress', 'completed', 'cancelled', 'onhold', 'rejected'
-];
-
-
-class AddJob extends StatefulWidget { // Renamed class
-  final CargoJob? job; // To pass for editing
+class AddJob extends StatefulWidget { 
+  final CargoJob? job; 
   final bool isEditing;
 
-  const AddJob({Key? key, this.job, this.isEditing = false}) : super(key: key); // Updated constructor
+  const AddJob({Key? key, this.job, this.isEditing = false}) : super(key: key); 
 
   @override
   State<AddJob> createState() => _AddJobState(); 
@@ -40,24 +26,25 @@ class AddJob extends StatefulWidget { // Renamed class
 class _AddJobState extends State<AddJob> { 
   final _formKey = GlobalKey<FormState>();
   
-  // Dates
   DateTime? _pickupDate;
   DateTime? _estimatedDeliveryDate;
   DateTime? _actualDeliveryDate;
 
-  String _selectedPaymentStatus = 'pending'; 
-  String _selectedDeliveryStatus = 'pending'; // Default delivery status
+  late String _selectedPaymentStatus; 
+  late String _selectedDeliveryStatus; 
   String? _imageUrl;
   bool _isPickingImage = false;
 
-  late TextEditingController _shipperNameController; // Renamed from _clientController
-  // _clientNumberController and _clientEmailController removed as per CargoJob model
-  late TextEditingController _agreedPriceController; // Renamed from _amountController
-  late TextEditingController _notesController; // Renamed from _descriptionController
-  late TextEditingController _pictureNameController; 
+  late TextEditingController _shipperNameController;
+  late TextEditingController _agreedPriceController;
+  late TextEditingController _notesController;
+  late TextEditingController _pictureNameController;
 
-  String? _selectedPickupLocationState; // Renamed from _selectedOriginState
-  String? _selectedDropoffLocationState; // Renamed from _selectedDestinationState
+  String? _selectedPickupLocationState;
+  String? _selectedDropoffLocationState;
+
+  List<String> _customerSuggestions = [];
+  bool _isLoadingCustomerNames = false;
 
   final picker = ImagePicker();
 
@@ -69,6 +56,8 @@ class _AddJobState extends State<AddJob> {
     _notesController = TextEditingController();
     _pictureNameController = TextEditingController();
 
+    _loadCustomerNames(); // Call to load customer names
+
     if (widget.isEditing && widget.job != null) {
       final job = widget.job!;
       _shipperNameController.text = job.shipperName ?? '';
@@ -76,24 +65,61 @@ class _AddJobState extends State<AddJob> {
       _notesController.text = job.notes ?? '';
       _imageUrl = job.receiptUrl;
       
-      if (job.pickupDate != null && job.pickupDate!.isNotEmpty) {
-        _pickupDate = DateTime.tryParse(job.pickupDate!);
-      }
-      if (job.estimatedDeliveryDate != null && job.estimatedDeliveryDate!.isNotEmpty) {
-        _estimatedDeliveryDate = DateTime.tryParse(job.estimatedDeliveryDate!);
-      }
-      if (job.actualDeliveryDate != null && job.actualDeliveryDate!.isNotEmpty) {
-        _actualDeliveryDate = DateTime.tryParse(job.actualDeliveryDate!);
+      _pickupDate = job.pickupDate; 
+      _estimatedDeliveryDate = job.estimatedDeliveryDate; 
+      _actualDeliveryDate = job.actualDeliveryDate; 
+
+      // Task 5: Verify initState for Edit Mode
+      // Assuming job.pickupLocation and job.dropoffLocation store abbreviations
+      if (job.pickupLocation != null && usStatesAndAbbreviations.any((s) => s.abbr == job.pickupLocation)) {
+        _selectedPickupLocationState = job.pickupLocation;
+      } else {
+         _selectedPickupLocationState = null; // Or try to find by name if legacy data might have full names
       }
 
-      _selectedPickupLocationState = usStates.contains(job.pickupLocation) ? job.pickupLocation : null;
-      _selectedDropoffLocationState = usStates.contains(job.dropoffLocation) ? job.dropoffLocation : null;
+      if (job.dropoffLocation != null && usStatesAndAbbreviations.any((s) => s.abbr == job.dropoffLocation)) {
+        _selectedDropoffLocationState = job.dropoffLocation;
+      } else {
+        _selectedDropoffLocationState = null;
+      }
       
-      _selectedPaymentStatus = job.paymentStatus?.toLowerCase() ?? 'pending';
-      _selectedDeliveryStatus = job.deliveryStatus?.toLowerCase() ?? 'pending';
+      _selectedPaymentStatus = job.paymentStatus ?? paymentStatusToString(PaymentStatus.Pending);
+      
+      DeliveryStatus? initialDeliveryStatusEnum = deliveryStatusFromString(job.deliveryStatus);
+      _selectedDeliveryStatus = initialDeliveryStatusEnum != null 
+                               ? deliveryStatusToString(initialDeliveryStatusEnum) 
+                               : deliveryStatusToString(DeliveryStatus.Scheduled);
+
     } else {
-      // Set default for pickupDate if not editing
       _pickupDate = DateTime.now();
+      _selectedDeliveryStatus = deliveryStatusToString(DeliveryStatus.Scheduled);
+      _selectedPaymentStatus = paymentStatusToString(PaymentStatus.Pending);
+    }
+  }
+
+  Future<void> _loadCustomerNames() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoadingCustomerNames = true;
+    });
+    try {
+      final provider = context.read<CargoJobProvider>();
+      final names = await provider.fetchUniqueCustomerNames();
+      if (!mounted) return;
+      setState(() {
+        _customerSuggestions = names;
+      });
+    } catch (e) {
+      print('Error loading customer names: $e');
+      if (mounted) {
+        CustomSnackBar.show(context, 'Error loading customer names: $e', Icons.error, backgroundColor: Colors.red);
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingCustomerNames = false;
+        });
+      }
     }
   }
 
@@ -156,18 +182,18 @@ class _AddJobState extends State<AddJob> {
     if (mounted) {
       setState(() {
         _imageUrl = null; 
-        _pickupDate = DateTime.now(); // Reset to now for new entries
+        _pickupDate = DateTime.now(); 
         _estimatedDeliveryDate = null;
         _actualDeliveryDate = null;
-        _selectedPaymentStatus = 'pending';
-        _selectedDeliveryStatus = 'pending';
+        _selectedPaymentStatus = paymentStatusToString(PaymentStatus.Pending);
+        _selectedDeliveryStatus = deliveryStatusToString(DeliveryStatus.Scheduled);
         _selectedPickupLocationState = null;
         _selectedDropoffLocationState = null;
       });
     }
   }
 
-  Future<void> _saveOrUpdateJob() async { 
+  Future<void> _proceedWithSavingJob() async {
     if (!_formKey.currentState!.validate()) {
       CustomSnackBar.show(context, 'Please fix errors in the form.', Icons.error, backgroundColor: Colors.orange);
       return;
@@ -187,40 +213,87 @@ class _AddJobState extends State<AddJob> {
     }
 
     final jobData = CargoJob(
-      id: widget.isEditing ? widget.job!.id : null, // Set ID if editing
+      id: widget.isEditing ? widget.job!.id : null,
       shipperName: capitalizeEachWord(_shipperNameController.text),
-      receiptUrl: _imageUrl, 
-      pickupDate: _pickupDate != null ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(_pickupDate!) : null,
-      estimatedDeliveryDate: _estimatedDeliveryDate != null ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(_estimatedDeliveryDate!) : null,
-      actualDeliveryDate: _actualDeliveryDate != null ? DateFormat('yyyy-MM-ddTHH:mm:ss').format(_actualDeliveryDate!) : null,
-      pickupLocation: _selectedPickupLocationState, 
-      dropoffLocation: _selectedDropoffLocationState, 
-      agreedPrice: double.tryParse(_agreedPriceController.text) ?? 0.0, 
-      paymentStatus: _selectedPaymentStatus.toLowerCase(), 
-      deliveryStatus: _selectedDeliveryStatus.toLowerCase(),
+      receiptUrl: _imageUrl,
+      pickupDate: _pickupDate,
+      estimatedDeliveryDate: _estimatedDeliveryDate,
+      actualDeliveryDate: _actualDeliveryDate,
+      pickupLocation: _selectedPickupLocationState,
+      dropoffLocation: _selectedDropoffLocationState,
+      agreedPrice: double.tryParse(_agreedPriceController.text) ?? 0.0,
+      paymentStatus: _selectedPaymentStatus,
+      deliveryStatus: _selectedDeliveryStatus,
       notes: _notesController.text,
-      // created_by and updated_at will be handled by Supabase or provider logic
     );
 
     try {
       final provider = context.read<CargoJobProvider>();
       if (widget.isEditing) {
-        await provider.editJob(jobData.id!, jobData); // Pass jobData directly
-        if(mounted) CustomSnackBar.show(context, 'Job updated successfully', Icons.check);
+        await provider.editJob(jobData.id!, jobData);
+        if (mounted) CustomSnackBar.show(context, 'Job updated successfully', Icons.check);
       } else {
         await provider.addJob(jobData);
-        if(mounted) CustomSnackBar.show(context, 'Job added successfully', Icons.check);
+        if (mounted) CustomSnackBar.show(context, 'Job added successfully', Icons.check);
       }
-      if(mounted) Navigator.of(context).pop(true); // Pop screen on success, pass true
+      if (mounted) Navigator.of(context).pop(true); // Pop AddJob screen
     } catch (e) {
       print('Error saving/updating job: $e');
-      if(mounted) CustomSnackBar.show(context, 'Failed to save job: $e', Icons.error, backgroundColor: Colors.red);
+      if (mounted) CustomSnackBar.show(context, 'Failed to save job: $e', Icons.error, backgroundColor: Colors.red);
     }
   }
 
+  Future<void> _saveOrUpdateJob() async {
+    if (widget.isEditing == false) {
+      // Show confirmation dialog only when creating a new job
+      showDialog(
+        context: context,
+        builder: (BuildContext dialogContext) { // Use a different context name for the dialog
+          return AlertDialog(
+            title: const Text('Confirm Save'),
+            content: const Text('Note: Once a job is created, only the delivery and payment statuses can be edited. Proceed with saving?'),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Cancel'),
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(); // Dismiss the dialog
+                },
+              ),
+              TextButton(
+                child: const Text('Save'),
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(); // Dismiss the dialog
+                  _proceedWithSavingJob(); // Proceed with saving
+                },
+              ),
+            ],
+          );
+        },
+      );
+    } else {
+      // If editing, proceed directly
+      _proceedWithSavingJob();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    List<DeliveryStatus> deliveryDropdownItemsEnums;
+    if (widget.isEditing) {
+      deliveryDropdownItemsEnums = [ 
+        DeliveryStatus.Scheduled,
+        DeliveryStatus.InProgress,
+        DeliveryStatus.Delivered,
+        DeliveryStatus.Cancelled,
+      ];
+    } else {
+      deliveryDropdownItemsEnums = [DeliveryStatus.Scheduled]; 
+    }
+
+    List<PaymentStatus> paymentDropdownItemsEnums = widget.isEditing
+        ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
+        : [PaymentStatus.Pending, PaymentStatus.Paid]; 
+
     return Scaffold(
       backgroundColor: const Color(0xFF121212), 
       body: CustomScrollView(
@@ -289,24 +362,105 @@ class _AddJobState extends State<AddJob> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      TextInputField( 
-                        controller: _shipperNameController,
-                        label: 'Shipper Name', 
-                        icon: Icons.person,
-                        inputType: TextInputType.name,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter shipper name';
-                          } else if (value.length < 3) {
-                            return 'Name must be at least 3 characters';
-                          }
-                          return null;
-                        },
-                      ),
+                      // Shipper Name Autocomplete
+                      if (_isLoadingCustomerNames)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16.0),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      else
+                        Autocomplete<String>(
+                          optionsBuilder: (TextEditingValue textEditingValue) {
+                            if (textEditingValue.text.isEmpty) {
+                              // Show all suggestions if the text field is empty and has focus, or a subset.
+                              // For now, let's show all loaded suggestions.
+                              return _customerSuggestions;
+                            }
+                            return _customerSuggestions.where((String option) {
+                              return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                            });
+                          },
+                          onSelected: (String selection) {
+                            _shipperNameController.text = selection;
+                            // Update the Autocomplete's internal controller's text as well,
+                            // and move cursor to the end. This is important if the fieldViewBuilder's
+                            // controller is different or if you want to ensure UI consistency immediately.
+                            // However, with the current fieldViewBuilder, this should be handled.
+                            FocusScope.of(context).unfocus(); // Hide keyboard
+                          },
+                          displayStringForOption: (String option) => option,
+                          fieldViewBuilder: (BuildContext context,
+                              TextEditingController fieldTextEditingController,
+                              FocusNode fieldFocusNode,
+                              VoidCallback onFieldSubmitted) {
+
+                            // Sync Autocomplete's internal controller with _shipperNameController when the widget builds/rebuilds
+                            // This is important for initial values (e.g., in edit mode)
+                            if (_shipperNameController.text != fieldTextEditingController.text) {
+                                fieldTextEditingController.text = _shipperNameController.text;
+                                // Place cursor at the end
+                                fieldTextEditingController.selection = TextSelection.fromPosition(TextPosition(offset: fieldTextEditingController.text.length));
+                            }
+                            
+                            return TextFormField(
+                              controller: fieldTextEditingController, // USE Autocomplete's own controller
+                              focusNode: fieldFocusNode,
+                              decoration: _inputDecoration('Shipper Name (Type or Select)', Icons.person),
+                              validator: (value) {
+                                // It's better to validate against _shipperNameController.text
+                                // as it's the one being updated by `onChanged` and `onSelected`.
+                                final textToValidate = _shipperNameController.text;
+                                if (textToValidate.isEmpty) {
+                                  return 'Please enter shipper name';
+                                } else if (textToValidate.length < 3) {
+                                  return 'Name must be at least 3 characters';
+                                }
+                                return null;
+                              },
+                              onChanged: (text) {
+                                // CRUCIAL: Update _shipperNameController whenever the user types
+                                // This ensures that if the user types and doesn't select an option,
+                                // _shipperNameController (used for saving) still gets the value.
+                                _shipperNameController.text = text;
+                              },
+                              onFieldSubmitted: (_) {
+                                onFieldSubmitted(); // Standard Autocomplete behavior
+                              },
+                            );
+                          },
+                          optionsViewBuilder: (BuildContext context,
+                              AutocompleteOnSelected<String> onSelected,
+                              Iterable<String> options) {
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Material(
+                                elevation: 4.0,
+                                color: Colors.grey.shade800, // Theming for options
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(maxHeight: 250, maxWidth: 300), // Max height and width for options
+                                  child: ListView.builder(
+                                    padding: EdgeInsets.zero,
+                                    shrinkWrap: true, // Important for ConstrainedBox to work correctly with ListView
+                                    itemCount: options.length,
+                                    itemBuilder: (BuildContext context, int index) {
+                                      final String option = options.elementAt(index);
+                                      return InkWell(
+                                        onTap: () {
+                                          onSelected(option);
+                                        },
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(16.0),
+                                          child: Text(option, style: const TextStyle(color: Colors.white)), // Theming for option text
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       const SizedBox(height: 16),
-                      // Client Number and Email fields are removed as they are not in CargoJob
-                      
-                      // Pickup Date
                       DateSelectWidget(
                         label: "Pickup Date",
                         selectedDate: _pickupDate,
@@ -317,7 +471,6 @@ class _AddJobState extends State<AddJob> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      // Estimated Delivery Date
                       DateSelectWidget(
                         label: "Est. Delivery Date (Optional)",
                         selectedDate: _estimatedDeliveryDate,
@@ -329,7 +482,6 @@ class _AddJobState extends State<AddJob> {
                         isOptional: true,
                       ),
                       const SizedBox(height: 16),
-                      // Actual Delivery Date
                       DateSelectWidget(
                         label: "Actual Delivery Date (Optional)",
                         selectedDate: _actualDeliveryDate,
@@ -341,13 +493,17 @@ class _AddJobState extends State<AddJob> {
                          isOptional: true,
                       ),
                       const SizedBox(height: 16),
+                      // Task 4: Update Pickup Location Dropdown
                       DropdownButtonFormField<String>(
                         decoration: _inputDecoration('Pickup Location (State)', Icons.place_rounded),
                         dropdownColor: Colors.grey.shade800,
                         style: const TextStyle(color: Colors.white),
                         value: _selectedPickupLocationState,
-                        items: usStates.map((String value) {
-                          return DropdownMenuItem<String>(value: value, child: Text(value));
+                        items: usStatesAndAbbreviations.map((USState state) {
+                          return DropdownMenuItem<String>(
+                            value: state.abbr, // Value is the abbreviation
+                            child: Text(state.name), // Display is the full name
+                          );
                         }).toList(),
                         onChanged: (String? newValue) {
                           setState(() { _selectedPickupLocationState = newValue; });
@@ -355,13 +511,17 @@ class _AddJobState extends State<AddJob> {
                         validator: (value) => value == null ? 'Please select a pickup state' : null,
                       ),
                       const SizedBox(height: 16),
+                      // Task 4: Update Dropoff Location Dropdown
                       DropdownButtonFormField<String>(
                         decoration: _inputDecoration('Dropoff Location (State)', Icons.place_rounded),
                         dropdownColor: Colors.grey.shade800,
                         style: const TextStyle(color: Colors.white),
                         value: _selectedDropoffLocationState,
-                        items: usStates.map((String value) {
-                          return DropdownMenuItem<String>(value: value, child: Text(value));
+                        items: usStatesAndAbbreviations.map((USState state) {
+                          return DropdownMenuItem<String>(
+                            value: state.abbr, // Value is the abbreviation
+                            child: Text(state.name), // Display is the full name
+                          );
                         }).toList(),
                         onChanged: (String? newValue) {
                           setState(() { _selectedDropoffLocationState = newValue; });
@@ -385,26 +545,64 @@ class _AddJobState extends State<AddJob> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      // Delivery Status Dropdown
-                      DropdownButtonFormField<String>(
-                        decoration: _inputDecoration('Delivery Status', Icons.local_shipping),
-                        dropdownColor: Colors.grey.shade800,
-                        style: const TextStyle(color: Colors.white),
-                        value: _selectedDeliveryStatus,
-                        items: deliveryStatusOptions.map((String value) {
-                          return DropdownMenuItem<String>(value: value, child: Text(value.toUpperCase()));
-                        }).toList(),
-                        onChanged: (String? newValue) {
-                          setState(() { _selectedDeliveryStatus = newValue ?? 'pending'; });
-                        },
-                        validator: (value) => value == null ? 'Please select a delivery status' : null,
+                      // Delivery Status ChoiceChips
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Delivery Status:', style: TextStyle(color: Colors.white70, fontSize: 16)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8.0,
+                            runSpacing: 4.0,
+                            children: deliveryDropdownItemsEnums.map((DeliveryStatus statusEnum) {
+                              final statusStr = deliveryStatusToString(statusEnum);
+                              return ChoiceChip(
+                                label: Text(statusStr.toUpperCase()),
+                                selected: _selectedDeliveryStatus == statusStr,
+                                onSelected: (bool selected) {
+                                  if (selected) {
+                                    setState(() {
+                                      _selectedDeliveryStatus = statusStr;
+                                    });
+                                  }
+                                },
+                                selectedColor: Theme.of(context).colorScheme.secondary,
+                                backgroundColor: Colors.grey.shade700,
+                                labelStyle: TextStyle(color: _selectedDeliveryStatus == statusStr ? Colors.black : Colors.white),
+                              );
+                            }).toList(),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
-                      PaymentStatusWidget( // This is already a custom widget
-                        selectedStatus: _selectedPaymentStatus,
-                        onStatusSelected: (status) {
-                           setState(() { _selectedPaymentStatus = status; });
-                        },
+                      // Payment Status ChoiceChips
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Payment Status:', style: TextStyle(color: Colors.white70, fontSize: 16)),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8.0,
+                            runSpacing: 4.0,
+                            children: paymentDropdownItemsEnums.map((PaymentStatus statusEnum) {
+                              final statusStr = paymentStatusToString(statusEnum);
+                              return ChoiceChip(
+                                label: Text(statusStr.toUpperCase()),
+                                selected: _selectedPaymentStatus == statusStr,
+                                onSelected: (bool selected) {
+                                  if (selected) {
+                                    setState(() {
+                                      _selectedPaymentStatus = statusStr;
+                                    });
+                                  }
+                                },
+                                selectedColor: Theme.of(context).colorScheme.secondary,
+                                backgroundColor: Colors.grey.shade700,
+                                labelStyle: TextStyle(color: _selectedPaymentStatus == statusStr ? Colors.black : Colors.white),
+                              );
+                            }).toList(),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       TextInputField(
@@ -416,7 +614,7 @@ class _AddJobState extends State<AddJob> {
                       ),
                       const SizedBox(height: 32),
                       ElevatedButton(
-                        onPressed: _saveOrUpdateJob, // Updated method call
+                        onPressed: _saveOrUpdateJob, 
                         style: ElevatedButton.styleFrom(
                             minimumSize: const Size(double.infinity, 50),
                             backgroundColor: Colors.amber,
@@ -491,7 +689,6 @@ class TextInputField extends StatelessWidget {
   }
 }
 
-// Generic Date Selection Widget
 class DateSelectWidget extends StatelessWidget {
   final String label;
   final DateTime? selectedDate;
@@ -510,7 +707,7 @@ class DateSelectWidget extends StatelessWidget {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: selectedDate ?? DateTime.now(),
-      firstDate: DateTime(2000), // Adjust as needed
+      firstDate: DateTime(2000), 
       lastDate: DateTime(2101),
     );
     if (picked != null) {
@@ -527,7 +724,7 @@ class DateSelectWidget extends StatelessWidget {
         style: const TextStyle(fontSize: 16, color: Colors.white70),
       ),
       trailing: isOptional && selectedDate != null 
-        ? IconButton(icon: Icon(Icons.clear, color: Colors.redAccent), onPressed: () => onDateSelected(DateTime(0))) // Special value to clear
+        ? IconButton(icon: const Icon(Icons.clear, color: Colors.redAccent), onPressed: () => onDateSelected(DateTime(0))) 
         : null,
       onTap: () => _selectDate(context),
       tileColor: Colors.grey.shade800, 
@@ -540,42 +737,49 @@ class DateSelectWidget extends StatelessWidget {
 }
 
 
-class PaymentStatusWidget extends StatelessWidget {
+class PaymentStatusWidget extends StatelessWidget { 
   final String selectedStatus;
   final ValueChanged<String> onStatusSelected;
+  final bool isEditing; 
 
   const PaymentStatusWidget({
     Key? key,
     required this.selectedStatus,
     required this.onStatusSelected,
+    required this.isEditing, 
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      title: const Text("Payment Status", style: TextStyle(fontSize: 16, color: Colors.white70)),
-      contentPadding: const EdgeInsets.symmetric(vertical: 5, horizontal: 10), 
-      tileColor: Colors.grey.shade800,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: Colors.grey.shade700),
-      ),
-      subtitle: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: ['pending', 'paid', 'overdue', 'refunded'].map((status) { // Added 'refunded'
-          bool isSelected = selectedStatus.toLowerCase() == status; // Ensure case-insensitive comparison
-          return ChoiceChip(
-            label: Text(status.toUpperCase(), style: TextStyle(color: isSelected ? Colors.black : Colors.white70)),
-            selected: isSelected,
-            onSelected: (selected) {
-              if (selected) onStatusSelected(status);
-            },
-            selectedColor: Colors.amber,
-            backgroundColor: Colors.grey.shade700,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: isSelected ? Colors.amber : Colors.grey.shade600)),
+    List<PaymentStatus> items = isEditing
+      ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
+      : [PaymentStatus.Pending, PaymentStatus.Paid];
+
+    return DropdownButtonFormField<String>(
+        decoration: InputDecoration( 
+          labelText: "Payment Status",
+          prefixIcon: Icon(Icons.payment, color: Colors.white70),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),
+          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.grey.shade700)),
+          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.amber)),
+          filled: true,
+          fillColor: Colors.grey.shade800,
+          labelStyle: const TextStyle(color: Colors.white70),
+        ),
+        dropdownColor: Colors.grey.shade800,
+        style: const TextStyle(color: Colors.white),
+        value: selectedStatus,
+        items: items.map((PaymentStatus status) { 
+          final statusStr = paymentStatusToString(status);
+          return DropdownMenuItem<String>(
+            value: statusStr,
+            child: Text(statusStr.toUpperCase()),
           );
         }).toList(),
-      ),
-    );
+        onChanged: (String? newValue) {
+           onStatusSelected(newValue ?? paymentStatusToString(PaymentStatus.Pending));
+        },
+        validator: (value) => value == null || value.isEmpty ? 'Please select a payment status' : null,
+      );
   }
 }
