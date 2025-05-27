@@ -613,4 +613,4 @@ class _JobStatsPageState extends State<JobStatsPage> {
   }
 }
 
-[end of bizorganizer/lib/stats.dart]
+

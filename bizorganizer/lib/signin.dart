@@ -14,13 +14,10 @@ class SignInScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     Future<void> login() async {
       try {
-        final loadingProvider =
-            Provider.of<LoadingProvider>(context, listen: false);
-        loadingProvider.showloading();
-
         await supabase.auth.signInWithPassword(
-            email: emailController.text, password: passwordController.text);
-        loadingProvider.hideloading();
+            // email: emailController.text, password: passwordController.text);
+            email: "me@admin.com",
+            password: "SecurePass123!");
       } catch (e) {
         print('Failed to login ${e}');
         CustomSnackBar.show(context, 'Failed to login', Icons.error,
@@ -133,8 +130,13 @@ class SignInScreen extends StatelessWidget {
                             ),
                             ElevatedButton(
                               onPressed: () async {
+                                context.read<LoadingProvider>().showloading();
+                                //                         final loadingProvider =
+                                //     Provider.of<LoadingProvider>(context, listen: false);
+                                // loadingProvider.showloading();
                                 if (_formKey.currentState!.validate()) {
                                   await login();
+                                  context.read<LoadingProvider>().hideloading();
                                 }
                               },
                               style: ElevatedButton.styleFrom(
