@@ -1,20 +1,21 @@
-// Renamed from Trip to CargoJob and fields updated as per schema
+import 'package:bizorganizer/models/status_constants.dart';
+
 class CargoJob {
-  final int? id; // Assuming int from Supabase auto-increment
+  final int? id; 
   final String? shipperName;
-  final String? paymentStatus;
-  final String? deliveryStatus;
+  final String? paymentStatus; 
+  final String? deliveryStatus; 
   final String? pickupLocation;
   final String? dropoffLocation;
-  final String? pickupDate; // Storing as String, assuming ISO 8601 format from/to Supabase
-  final String? estimatedDeliveryDate; // String
-  final String? actualDeliveryDate; // String
+  final DateTime? pickupDate; 
+  final DateTime? estimatedDeliveryDate; 
+  final DateTime? actualDeliveryDate; 
   final double? agreedPrice;
   final String? notes;
-  final String? updatedAt; // String, from Supabase timestamp
-  final String? createdBy; // String, user ID (UUID) from Supabase
+  final DateTime? updatedAt; 
+  final String? createdBy; 
   final String? receiptUrl;
-  final String? createdAt; // String, from Supabase timestamp
+  final DateTime? createdAt; 
 
   CargoJob({
     this.id,
@@ -34,28 +35,51 @@ class CargoJob {
     this.createdAt,
   });
 
-  Map<String, dynamic> toJson() {
+  String? get effectiveDeliveryStatus {
+    // If already in a terminal state set by user, respect that.
+    if (deliveryStatus == deliveryStatusToString(DeliveryStatus.Delivered) ||
+        deliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
+      return deliveryStatus;
+    }
+
+    // If an actual delivery date is set, it's considered Delivered.
+    if (actualDeliveryDate != null) {
+      return deliveryStatusToString(DeliveryStatus.Delivered);
+    }
+
+    // If it's past estimated delivery and not yet Delivered or Cancelled, it's Delayed.
+    // (This implies the actual stored status could be Scheduled or InProgress)
+    if (estimatedDeliveryDate != null && 
+        deliveryStatus != deliveryStatusToString(DeliveryStatus.Delivered) && // Ensure not already delivered
+        deliveryStatus != deliveryStatusToString(DeliveryStatus.Cancelled) && // Ensure not already cancelled
+        estimatedDeliveryDate!.isBefore(DateTime.now())) {
+      return deliveryStatusToString(DeliveryStatus.Delayed);
+    }
+
+    // Otherwise, return the actual stored status, or default to Scheduled if null.
+    return deliveryStatus ?? deliveryStatusToString(DeliveryStatus.Scheduled);
+  }
+
+
+  Map<String, dynamic> toJson() { 
     return {
-      // id is typically not sent in toJson for create, Supabase handles it. Included if updating.
-      // 'id': id, 
       'shipper_name': shipperName,
-      'payment_status': paymentStatus,
-      'delivery_status': deliveryStatus,
+      'payment_status': paymentStatus, 
+      'delivery_status': deliveryStatus, 
       'pickup_location': pickupLocation,
       'dropoff_location': dropoffLocation,
-      'pickup_date': pickupDate,
-      'estimated_delivery_date': estimatedDeliveryDate,
-      'actual_delivery_date': actualDeliveryDate,
+      'pickup_date': pickupDate?.toIso8601String(),
+      'estimated_delivery_date': estimatedDeliveryDate?.toIso8601String(),
+      'actual_delivery_date': actualDeliveryDate?.toIso8601String(),
       'agreed_price': agreedPrice,
       'notes': notes,
-      // 'updated_at': updatedAt, // Supabase usually handles this automatically
-      'created_by': createdBy, // Usually set by Supabase based on authenticated user
+      'created_by': createdBy, 
       'receipt_url': receiptUrl,
-      // 'created_at': createdAt, // Supabase usually handles this automatically
+      // id, created_at, updated_at are typically handled by Supabase
     };
   }
 
-  factory CargoJob.fromJson(Map<String, dynamic> json) {
+  factory CargoJob.fromJson(Map<String, dynamic> json) { 
     return CargoJob(
       id: json['id'] as int?,
       shipperName: json['shipper_name'] as String?,
@@ -63,16 +87,15 @@ class CargoJob {
       deliveryStatus: json['delivery_status'] as String?,
       pickupLocation: json['pickup_location'] as String?,
       dropoffLocation: json['dropoff_location'] as String?,
-      pickupDate: json['pickup_date'] as String?,
-      estimatedDeliveryDate: json['estimated_delivery_date'] as String?,
-      actualDeliveryDate: json['actual_delivery_date'] as String?,
-      // Handle potential num type from json for double fields
+      pickupDate: json['pickup_date'] == null ? null : DateTime.tryParse(json['pickup_date'] as String),
+      estimatedDeliveryDate: json['estimated_delivery_date'] == null ? null : DateTime.tryParse(json['estimated_delivery_date'] as String),
+      actualDeliveryDate: json['actual_delivery_date'] == null ? null : DateTime.tryParse(json['actual_delivery_date'] as String),
       agreedPrice: (json['agreed_price'] as num?)?.toDouble(),
       notes: json['notes'] as String?,
-      updatedAt: json['updated_at'] as String?,
+      updatedAt: json['updated_at'] == null ? null : DateTime.tryParse(json['updated_at'] as String),
       createdBy: json['created_by'] as String?,
       receiptUrl: json['receipt_url'] as String?,
-      createdAt: json['created_at'] as String?,
+      createdAt: json['created_at'] == null ? null : DateTime.tryParse(json['created_at'] as String),
     );
   }
 }
