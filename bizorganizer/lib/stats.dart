@@ -265,8 +265,7 @@ class _JobStatsPageState extends State<JobStatsPage> {
         cancelledCount++;
       } else if (effectiveStatus == deliveryStatusToString(DeliveryStatus.Delayed)) {
         delayedCount++;
-      } else if (effectiveStatus == deliveryStatusToString(DeliveryStatus.Scheduled) ||
-                 effectiveStatus == deliveryStatusToString(DeliveryStatus.InProgress)) {
+      } else if (effectiveStatus == deliveryStatusToString(DeliveryStatus.Scheduled)) {
         scheduledAndInProgressCount++;
       }
     }

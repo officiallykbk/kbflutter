@@ -157,12 +157,12 @@ class _AddJobState extends State<AddJob> {
   Future<void> _uploadImageToSupabase(File image, String imgName) async {
     try {
       final String path = 'images/$imgName--${DateTime.now().toIso8601String()}.png';
-      await supabase.storage.from('BizBucket').upload(path, image);
+      await supabase.storage.from('receipts').upload(path, image);
       
       if (!mounted) return;
       CustomSnackBar.show(context, 'Image Uploaded', Icons.check);
       setState(() {
-        _imageUrl = supabase.storage.from('BizBucket').getPublicUrl(path);
+        _imageUrl = supabase.storage.from('receipts').getPublicUrl(path);
       });
     } catch (e) {
       print('Failed to upload image: $e');
@@ -228,7 +228,7 @@ class _AddJobState extends State<AddJob> {
     try {
       final provider = context.read<CargoJobProvider>();
       if (widget.isEditing) {
-        await provider.editJob(jobData.id!, jobData);
+        // await provider.editJob(jobData.id!, jobData);
         if (mounted) CustomSnackBar.show(context, 'Job updated successfully', Icons.check);
       } else {
         await provider.addJob(jobData);
@@ -280,7 +280,6 @@ class _AddJobState extends State<AddJob> {
     if (widget.isEditing) {
       deliveryDropdownItemsEnums = [ 
         DeliveryStatus.Scheduled,
-        DeliveryStatus.InProgress,
         DeliveryStatus.Delivered,
         DeliveryStatus.Cancelled,
       ];
@@ -289,7 +288,7 @@ class _AddJobState extends State<AddJob> {
     }
 
     List<PaymentStatus> paymentDropdownItemsEnums = widget.isEditing
-        ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
+        ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Refunded] 
         : [PaymentStatus.Pending, PaymentStatus.Paid]; 
 
     return Scaffold(
@@ -750,7 +749,7 @@ class PaymentStatusWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     List<PaymentStatus> items = isEditing
-      ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
+      ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Refunded] 
       : [PaymentStatus.Pending, PaymentStatus.Paid];
 
     return DropdownButtonFormField<String>(

@@ -139,7 +139,7 @@ class _RevenueTrendChartWidgetState extends State<RevenueTrendChartWidget> {
           axisLine: AxisLine(color: Colors.grey.shade700),
         ),
         primaryYAxis: NumericAxis(
-          labelFormat: '\${value}', // Currency format
+          labelFormat: '{value}', // Currency format
           majorTickLines: MajorTickLines(size: 0),
           labelStyle: TextStyle(color: Colors.white70, fontSize: 10),
           axisLine: AxisLine(width: 0, color: Colors.grey.shade700),

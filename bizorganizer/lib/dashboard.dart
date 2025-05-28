@@ -153,7 +153,7 @@ class _DashboardState extends State<Dashboard> {
             }
 
             _totalJobsCount = displayJobs.length;
-            _pendingJobsCount = displayJobs.where((job) => deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.InProgress || deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.Scheduled).length;
+            _pendingJobsCount = displayJobs.where((job) =>  deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.Scheduled).length;
             _completedJobsCount = displayJobs.where((job) => deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.Delivered).length;
             _cancelledJobsCount = displayJobs.where((job) => deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.Cancelled).length;
             _overdueJobsCount = displayJobs.where((job) => deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.Delayed).length;
@@ -388,7 +388,6 @@ class _DashboardState extends State<Dashboard> {
       case 'completed': // Kept for backward compatibility if data contains "completed"
         return Colors.green.shade700; 
       case 'pending':
-      case 'in progress': 
       case 'scheduled': // Group Scheduled with Pending/InProgress for color
         return Colors.orange.shade700; 
       case 'cancelled':

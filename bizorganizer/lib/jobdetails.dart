@@ -36,15 +36,14 @@ class _JobDetailsState extends State<JobDetails> {
     DeliveryStatus.Scheduled,
     DeliveryStatus.Delivered,
     DeliveryStatus.Cancelled,
+    DeliveryStatus.Delayed
   ];
 
   // Payment status options remain broader as per previous implementation, not changed by this task
   final List<PaymentStatus> userSelectablePaymentStatuses = [
     PaymentStatus.Pending,
     PaymentStatus.Paid,
-    PaymentStatus.Cancelled,
     PaymentStatus.Refunded,
-    PaymentStatus.Overdue,
   ];
 
   @override
@@ -52,15 +51,18 @@ class _JobDetailsState extends State<JobDetails> {
     super.initState();
     DeliveryStatus? initialDeliveryEnum =
         deliveryStatusFromString(widget.job['delivery_status']?.toString());
-    currentActualDeliveryStatus = initialDeliveryEnum != null
-        ? deliveryStatusToString(initialDeliveryEnum)
-        : deliveryStatusToString(DeliveryStatus.Scheduled);
+    currentActualDeliveryStatus = (initialDeliveryEnum != null
+            ? deliveryStatusToString(initialDeliveryEnum)
+            : deliveryStatusToString(DeliveryStatus.Scheduled))
+        .toLowerCase();
 
     PaymentStatus? initialPaymentEnum =
         paymentStatusFromString(widget.job['payment_status']?.toString());
-    currentActualPaymentStatus = initialPaymentEnum != null
-        ? paymentStatusToString(initialPaymentEnum)
-        : paymentStatusToString(PaymentStatus.Pending);
+
+    currentActualPaymentStatus = (initialPaymentEnum != null
+            ? paymentStatusToString(initialPaymentEnum)
+            : paymentStatusToString(PaymentStatus.Pending))
+        .toLowerCase();
     prevDelivStatus = currentActualDeliveryStatus;
     prevPayStatus = currentActualPaymentStatus;
     _fetchHistory();
@@ -296,13 +298,20 @@ class _JobDetailsState extends State<JobDetails> {
                         if (selected) {
                           try {
                             await jobProvider.updateJobDeliveryStatus(
-                                cargoJobInstance.id!, statusStr);
+                                cargoJobInstance.id!.toString(), statusStr);
                             if (mounted) {
                               prevDelivStatus = currentActualDeliveryStatus;
                               setState(() {
                                 currentActualDeliveryStatus =
                                     statusStr.toLowerCase();
                               });
+                              _fetchHistory(); // Added history refresh
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        'Delivery status updated to ${statusStr.toUpperCase()}'),
+                                    backgroundColor: Colors.green),
+                              );
                             }
                           } catch (e) {
                             if (mounted) {
@@ -367,7 +376,15 @@ class _JobDetailsState extends State<JobDetails> {
                                 });
                               }
                               await jobProvider.updateJobPaymentStatus(
-                                  cargoJobInstance.id!, statusStr);
+                                  cargoJobInstance.id!.toString(),
+                                  statusStr); // Fixed ID type
+                              _fetchHistory(); // Added history refresh
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        'Payment status updated to ${statusStr.toUpperCase()}'),
+                                    backgroundColor: Colors.green),
+                              );
                             } catch (e) {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -506,7 +523,7 @@ class _JobDetailsState extends State<JobDetails> {
                     confirmKey.currentState?.validate();
                   },
                   validator: (value) {
-                    if (value != 'delete this') {
+                    if (value?.toLowerCase().trim() != 'delete this') {
                       return "Text does not match.";
                     }
                     return null;
@@ -525,11 +542,14 @@ class _JobDetailsState extends State<JobDetails> {
             StatefulBuilder(// To enable/disable the confirm button
                 builder: (BuildContext context, StateSetter setState) {
               bool currentButtonEnabledState =
-                  deleteConfirmController.text == 'delete this';
+                  deleteConfirmController.text.trim() == 'delete this';
 
               return TextButton(
                 child: Text('Confirm Delete',
-                    style: TextStyle(color: currentButtonEnabledState ?Color.fromARGB(255, 255, 82, 82) :Color.fromARGB(125, 255, 82, 82))),
+                    style: TextStyle(
+                        color: currentButtonEnabledState
+                            ? Color.fromARGB(255, 255, 82, 82)
+                            : Color.fromARGB(125, 255, 82, 82))),
                 onPressed: currentButtonEnabledState
                     ? () async {
                         final String? jobId = widget.job['id'] as String?;
