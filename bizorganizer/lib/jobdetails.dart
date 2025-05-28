@@ -71,7 +71,7 @@ class _JobDetailsState extends State<JobDetails> {
     setState(() {
       _isLoadingHistory = true;
     });
-    final jobId = widget.job['id'] as int?;
+    final jobId = widget.job['id'] as String?;
     if (jobId == null) {
       setState(() {
         _isLoadingHistory = false;
@@ -528,11 +528,11 @@ class _JobDetailsState extends State<JobDetails> {
                   deleteConfirmController.text == 'delete this';
 
               return TextButton(
-                child: const Text('Confirm Delete',
-                    style: TextStyle(color: Colors.redAccent)),
+                child: Text('Confirm Delete',
+                    style: TextStyle(color: currentButtonEnabledState ?Color.fromARGB(255, 255, 82, 82) :Color.fromARGB(125, 255, 82, 82))),
                 onPressed: currentButtonEnabledState
                     ? () async {
-                        final int? jobId = widget.job['id'] as int?;
+                        final String? jobId = widget.job['id'] as String?;
                         if (jobId != null) {
                           try {
                             final provider = Provider.of<CargoJobProvider>(

@@ -77,7 +77,7 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> removeJob(int jobId) async {
+  Future<void> removeJob(String jobId) async {
     try {
       await _supabase.from('cargo_jobs').delete().eq('id', jobId);
       await fetchJobsData(); 
@@ -192,7 +192,7 @@ class CargoJobProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<JobHistoryEntry>> fetchJobHistory(int jobId) async {
+  Future<List<JobHistoryEntry>> fetchJobHistory(String jobId) async {
     try {
       final response = await _supabase
           .from('job_history')

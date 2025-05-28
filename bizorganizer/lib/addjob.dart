@@ -470,14 +470,14 @@ class _AddJobState extends State<AddJob> {
                       ),
                       const SizedBox(height: 16),
                       DateSelectWidget(
-                        label: "Est. Delivery Date (Optional)",
+                        label: "Est. Delivery Date",
                         selectedDate: _estimatedDeliveryDate,
                         onDateSelected: (date) {
                           setState(() {
                             _estimatedDeliveryDate = date;
                           });
                         },
-                        isOptional: true,
+                        isOptional: false,
                       ),
                       const SizedBox(height: 16),
                       DateSelectWidget(
