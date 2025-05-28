@@ -1,17 +1,17 @@
-import 'package:bizorganizer/models/imageCaching.dart'; 
-import 'package:bizorganizer/providers/orders_providers.dart'; 
+import 'package:bizorganizer/models/imageCaching.dart';
+import 'package:bizorganizer/providers/orders_providers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart'; 
-import 'package:bizorganizer/models/job_history_entry.dart'; 
-import 'package:bizorganizer/models/cargo_job.dart'; 
+import 'package:intl/intl.dart';
+import 'package:bizorganizer/models/job_history_entry.dart';
+import 'package:bizorganizer/models/cargo_job.dart';
 import 'package:bizorganizer/models/status_constants.dart';
 import 'package:bizorganizer/utils/us_states_data.dart'; // Added import
 
 class JobDetails extends StatefulWidget {
-  final Map<String, dynamic> job; 
+  final Map<String, dynamic> job;
 
   const JobDetails({super.key, required this.job});
 
@@ -20,43 +20,51 @@ class JobDetails extends StatefulWidget {
 }
 
 class _JobDetailsState extends State<JobDetails> {
-  late String currentActualDeliveryStatus; 
-  late String currentActualPaymentStatus;  
+  late String currentActualDeliveryStatus;
+  late String currentActualPaymentStatus;
+  late String prevDelivStatus;
+  late String prevPayStatus;
 
   List<JobHistoryEntry> _historyEntries = [];
   bool _isLoadingHistory = true;
 
-  final NumberFormat currencyFormatter = NumberFormat.currency(locale: 'en_US', symbol: '\$');
+  final NumberFormat currencyFormatter =
+      NumberFormat.currency(locale: 'en_US', symbol: '\$');
 
   // Task 2.2: Update userSelectableDeliveryStatuses
   final List<DeliveryStatus> userSelectableDeliveryStatuses = [
     DeliveryStatus.Scheduled,
-    DeliveryStatus.Delivered, 
-    DeliveryStatus.Cancelled, 
+    DeliveryStatus.Delivered,
+    DeliveryStatus.Cancelled,
+    DeliveryStatus.Delayed
   ];
 
   // Payment status options remain broader as per previous implementation, not changed by this task
   final List<PaymentStatus> userSelectablePaymentStatuses = [
     PaymentStatus.Pending,
     PaymentStatus.Paid,
-    PaymentStatus.Cancelled,
-    PaymentStatus.Refunded, 
-    PaymentStatus.Overdue,   
+    PaymentStatus.Refunded,
   ];
-
 
   @override
   void initState() {
     super.initState();
-    DeliveryStatus? initialDeliveryEnum = deliveryStatusFromString(widget.job['delivery_status']?.toString());
-    currentActualDeliveryStatus = initialDeliveryEnum != null 
-                                  ? deliveryStatusToString(initialDeliveryEnum) 
-                                  : deliveryStatusToString(DeliveryStatus.Scheduled);
+    DeliveryStatus? initialDeliveryEnum =
+        deliveryStatusFromString(widget.job['delivery_status']?.toString());
+    currentActualDeliveryStatus = (initialDeliveryEnum != null
+            ? deliveryStatusToString(initialDeliveryEnum)
+            : deliveryStatusToString(DeliveryStatus.Scheduled))
+        .toLowerCase();
 
-    PaymentStatus? initialPaymentEnum = paymentStatusFromString(widget.job['payment_status']?.toString());
-    currentActualPaymentStatus = initialPaymentEnum != null
-                                 ? paymentStatusToString(initialPaymentEnum)
-                                 : paymentStatusToString(PaymentStatus.Pending);
+    PaymentStatus? initialPaymentEnum =
+        paymentStatusFromString(widget.job['payment_status']?.toString());
+
+    currentActualPaymentStatus = (initialPaymentEnum != null
+            ? paymentStatusToString(initialPaymentEnum)
+            : paymentStatusToString(PaymentStatus.Pending))
+        .toLowerCase();
+    prevDelivStatus = currentActualDeliveryStatus;
+    prevPayStatus = currentActualPaymentStatus;
     _fetchHistory();
   }
 
@@ -65,7 +73,7 @@ class _JobDetailsState extends State<JobDetails> {
     setState(() {
       _isLoadingHistory = true;
     });
-    final jobId = widget.job['id'] as int?;
+    final jobId = widget.job['id'] as String?;
     if (jobId == null) {
       setState(() {
         _isLoadingHistory = false;
@@ -74,7 +82,8 @@ class _JobDetailsState extends State<JobDetails> {
       return;
     }
     try {
-      final entries = await context.read<CargoJobProvider>().fetchJobHistory(jobId);
+      final entries =
+          await context.read<CargoJobProvider>().fetchJobHistory(jobId);
       if (mounted) {
         setState(() {
           _historyEntries = entries;
@@ -87,9 +96,9 @@ class _JobDetailsState extends State<JobDetails> {
         setState(() {
           _isLoadingHistory = false;
         });
-         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error fetching job history: $e')),
-          );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error fetching job history: $e')),
+        );
       }
     }
   }
@@ -99,12 +108,12 @@ class _JobDetailsState extends State<JobDetails> {
     try {
       final dateTime = DateTime.parse(dateString);
       if (includeTime) {
-        return DateFormat('MMMM d, yyyy, hh:mm a').format(dateTime); 
+        return DateFormat('MMMM d, yyyy, hh:mm a').format(dateTime);
       } else {
         return DateFormat('MMMM d, yyyy').format(dateTime);
       }
     } catch (e) {
-      return dateString; 
+      return dateString;
     }
   }
 
@@ -115,26 +124,32 @@ class _JobDetailsState extends State<JobDetails> {
         (s) => s.abbr.toLowerCase() == abbr.toLowerCase(),
       );
       return state.name;
-    } catch (e) { // Catches if not found by firstWhere or other errors
+    } catch (e) {
+      // Catches if not found by firstWhere or other errors
       return abbr; // Return the original abbreviation if not found or on error
     }
   }
 
-  TableRow _buildTableRow(String label, String value, {bool isMultiline = false}) {
+  TableRow _buildTableRow(String label, String value,
+      {bool isMultiline = false}) {
     return TableRow(
       children: [
         TableCell(
           verticalAlignment: TableCellVerticalAlignment.top,
           child: Padding(
             padding: const EdgeInsets.all(8.0),
-            child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white70)),
+            child: Text(label,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.white70)),
           ),
         ),
         TableCell(
           verticalAlignment: TableCellVerticalAlignment.top,
           child: Padding(
             padding: const EdgeInsets.all(8.0),
-            child: Text(value, style: TextStyle(color: Colors.white, height: isMultiline ? 1.5 : null)),
+            child: Text(value,
+                style: TextStyle(
+                    color: Colors.white, height: isMultiline ? 1.5 : null)),
           ),
         ),
       ],
@@ -144,43 +159,54 @@ class _JobDetailsState extends State<JobDetails> {
   @override
   Widget build(BuildContext context) {
     final jobProvider = Provider.of<CargoJobProvider>(context);
-    final CargoJob cargoJobInstance = CargoJob.fromJson(widget.job); 
+    final CargoJob cargoJobInstance = CargoJob.fromJson(widget.job);
 
-    String displayEffectiveDeliveryStatus = cargoJobInstance.effectiveDeliveryStatus ?? deliveryStatusToString(DeliveryStatus.Scheduled);
-    
+    String displayEffectiveDeliveryStatus =
+        cargoJobInstance.effectiveDeliveryStatus ??
+            deliveryStatusToString(DeliveryStatus.Scheduled);
+
     return Scaffold(
       appBar: AppBar(
-        title: Text('Job Details', style: TextStyle(color: Theme.of(context).colorScheme.onPrimary)), 
+        title: Text('Job Details',
+            style: TextStyle(color: Theme.of(context).colorScheme.onPrimary)),
         centerTitle: true,
         backgroundColor: Theme.of(context).colorScheme.primary,
-        iconTheme: IconThemeData(color: Theme.of(context).colorScheme.onPrimary),
+        iconTheme:
+            IconThemeData(color: Theme.of(context).colorScheme.onPrimary),
         actions: [
           IconButton(
             icon: const Icon(Icons.delete, color: Colors.redAccent),
-            onPressed: _confirmDeleteJob, // Call the new delete confirmation method
+            onPressed:
+                _confirmDeleteJob, // Call the new delete confirmation method
           ),
         ],
       ),
       body: SafeArea(
         child: CustomScrollView(
           slivers: [
-            if (cargoJobInstance.receiptUrl != null && cargoJobInstance.receiptUrl!.isNotEmpty) 
+            if (cargoJobInstance.receiptUrl != null &&
+                cargoJobInstance.receiptUrl!.isNotEmpty)
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Receipt:', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white70)),
+                      Text('Receipt:',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleLarge
+                              ?.copyWith(color: Colors.white70)),
                       const SizedBox(height: 10),
                       InkWell(
                           onTap: () => Navigator.of(context).push(
                               MaterialPageRoute(
                                   builder: (_) => FullScreenImage(
-                                      imageUrl: cargoJobInstance.receiptUrl!))), 
+                                      imageUrl: cargoJobInstance.receiptUrl!))),
                           child: Hero(
-                              tag: cargoJobInstance.receiptUrl!, 
-                              child: CacheImage(imageUrl: cargoJobInstance.receiptUrl!))) 
+                              tag: cargoJobInstance.receiptUrl!,
+                              child: CacheImage(
+                                  imageUrl: cargoJobInstance.receiptUrl!)))
                     ],
                   ),
                 ),
@@ -189,63 +215,117 @@ class _JobDetailsState extends State<JobDetails> {
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Table(
-                  border: TableBorder.all(color: Colors.grey.shade700, borderRadius: BorderRadius.circular(8)), 
+                  border: TableBorder.all(
+                      color: Colors.grey.shade700,
+                      borderRadius: BorderRadius.circular(8)),
                   columnWidths: const {
-                    0: FixedColumnWidth(140), 
-                    1: FlexColumnWidth(), 
+                    0: FixedColumnWidth(140),
+                    1: FlexColumnWidth(),
                   },
                   children: [
-                    _buildTableRow('Shipper Name:', cargoJobInstance.shipperName ?? 'N/A'),
-                    _buildTableRow('Pickup Date:', _formatDate(cargoJobInstance.pickupDate?.toIso8601String(), includeTime: false)),
-                    _buildTableRow('Pickup Location:', _getFullStateName(cargoJobInstance.pickupLocation)),
-                    _buildTableRow('Dropoff Location:', _getFullStateName(cargoJobInstance.dropoffLocation)),
-                    _buildTableRow('Est. Delivery Date:', _formatDate(cargoJobInstance.estimatedDeliveryDate?.toIso8601String(), includeTime: false)),
-                    _buildTableRow('Actual Delivery Date:', _formatDate(cargoJobInstance.actualDeliveryDate?.toIso8601String(), includeTime: false)),
-                    _buildTableRow('Agreed Price:', currencyFormatter.format(cargoJobInstance.agreedPrice ?? 0.00)),
-                    _buildTableRow('Payment Status:', currentActualPaymentStatus.toUpperCase()), 
-                    _buildTableRow('Effective Delivery Status:', displayEffectiveDeliveryStatus.toUpperCase()), 
-                    _buildTableRow('Actual Delivery Status:', currentActualDeliveryStatus.toUpperCase()), 
-                    _buildTableRow('Notes:', cargoJobInstance.notes ?? 'N/A', isMultiline: true),
-                    _buildTableRow('Updated At:', _formatDate(cargoJobInstance.updatedAt?.toIso8601String())),
+                    _buildTableRow(
+                        'Shipper Name:', cargoJobInstance.shipperName ?? 'N/A'),
+                    _buildTableRow(
+                        'Pickup Date:',
+                        _formatDate(
+                            cargoJobInstance.pickupDate?.toIso8601String(),
+                            includeTime: false)),
+                    _buildTableRow('Pickup Location:',
+                        _getFullStateName(cargoJobInstance.pickupLocation)),
+                    _buildTableRow('Dropoff Location:',
+                        _getFullStateName(cargoJobInstance.dropoffLocation)),
+                    _buildTableRow(
+                        'Est. Delivery Date:',
+                        _formatDate(
+                            cargoJobInstance.estimatedDeliveryDate
+                                ?.toIso8601String(),
+                            includeTime: false)),
+                    _buildTableRow(
+                        'Actual Delivery Date:',
+                        _formatDate(
+                            cargoJobInstance.actualDeliveryDate
+                                ?.toIso8601String(),
+                            includeTime: false)),
+                    _buildTableRow(
+                        'Agreed Price:',
+                        currencyFormatter
+                            .format(cargoJobInstance.agreedPrice ?? 0.00)),
+                    _buildTableRow('Payment Status:',
+                        currentActualPaymentStatus.toUpperCase()),
+                    _buildTableRow('Effective Delivery Status:',
+                        displayEffectiveDeliveryStatus.toUpperCase()),
+                    _buildTableRow('Actual Delivery Status:',
+                        currentActualDeliveryStatus.toUpperCase()),
+                    _buildTableRow('Notes:', cargoJobInstance.notes ?? 'N/A',
+                        isMultiline: true),
+                    _buildTableRow(
+                        'Updated At:',
+                        _formatDate(
+                            cargoJobInstance.updatedAt?.toIso8601String())),
                   ],
                 ),
               ),
             ),
-
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0), 
-                child: Text('Update Delivery Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
+                padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+                child: Text('Update Delivery Status:',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(color: Colors.white70)),
               ),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12.0), 
+                padding: const EdgeInsets.symmetric(horizontal: 12.0),
                 child: Wrap(
-                  spacing: 8.0, 
+                  spacing: 8.0,
                   runSpacing: 4.0,
-                  children: userSelectableDeliveryStatuses.map((statusEnum) { 
+                  children: userSelectableDeliveryStatuses.map((statusEnum) {
                     final statusStr = deliveryStatusToString(statusEnum);
                     return ChoiceChip(
-                      label: Text(statusStr.toUpperCase(), style: TextStyle(color: currentActualDeliveryStatus == statusStr.toLowerCase() ? Colors.black : Colors.white)),
-                      selected: currentActualDeliveryStatus == statusStr.toLowerCase(),
-                      onSelected: (selected) async { // Made async
+                      label: Text(statusStr.toUpperCase(),
+                          style: TextStyle(
+                              color: currentActualDeliveryStatus ==
+                                      statusStr.toLowerCase()
+                                  ? Colors.black
+                                  : Colors.white)),
+                      selected: currentActualDeliveryStatus ==
+                          statusStr.toLowerCase(),
+                      onSelected: (selected) async {
+                        // Made async
                         if (selected) {
                           try {
-                            await jobProvider.updateJobDeliveryStatus(cargoJobInstance.id!, statusStr);
+                            await jobProvider.updateJobDeliveryStatus(
+                                cargoJobInstance.id!.toString(), statusStr);
                             if (mounted) {
+                              prevDelivStatus = currentActualDeliveryStatus;
                               setState(() {
-                                currentActualDeliveryStatus = statusStr.toLowerCase();
+                                currentActualDeliveryStatus =
+                                    statusStr.toLowerCase();
                               });
+                              _fetchHistory(); // Added history refresh
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        'Delivery status updated to ${statusStr.toUpperCase()}'),
+                                    backgroundColor: Colors.green),
+                              );
                             }
                           } catch (e) {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('Error updating delivery status: $e'),
+                                  content: Text(
+                                      'Error updating delivery status: $e'),
                                   backgroundColor: Colors.red,
                                 ),
                               );
+                              setState(() {
+                                currentActualDeliveryStatus =
+                                    prevDelivStatus.toLowerCase();
+                              });
                             }
                           }
                         }
@@ -258,67 +338,97 @@ class _JobDetailsState extends State<JobDetails> {
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0), 
-                child: Text('Update Payment Status:', style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Colors.white70)),
+                padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0),
+                child: Text('Update Payment Status:',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(color: Colors.white70)),
               ),
             ),
             SliverToBoxAdapter(
               child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12.0), 
-                  child: Wrap( 
-                    spacing: 8.0, 
+                  padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                  child: Wrap(
+                    spacing: 8.0,
                     runSpacing: 4.0,
-                    children: userSelectablePaymentStatuses.map((statusEnum) { 
+                    children: userSelectablePaymentStatuses.map((statusEnum) {
                       final statusStr = paymentStatusToString(statusEnum);
                       return ChoiceChip(
-                        label: Text(statusStr.toUpperCase(), style: TextStyle(color: currentActualPaymentStatus == statusStr.toLowerCase() ? Colors.black : Colors.white)),
-                      selected: currentActualPaymentStatus == statusStr.toLowerCase(),
-                      onSelected: (selected) async { // Made async
-                        if (selected) {
-                          try {
-                            await jobProvider.updateJobPaymentStatus(cargoJobInstance.id!, statusStr);
-                            if (mounted) {
-                              setState(() {
-                                currentActualPaymentStatus = statusStr.toLowerCase();
-                              });
-                            }
-                          } catch (e) {
-                            if (mounted) {
+                        label: Text(statusStr.toUpperCase(),
+                            style: TextStyle(
+                                color: currentActualPaymentStatus ==
+                                        statusStr.toLowerCase()
+                                    ? Colors.black
+                                    : Colors.white)),
+                        selected: currentActualPaymentStatus ==
+                            statusStr.toLowerCase(),
+                        onSelected: (selected) async {
+                          if (selected) {
+                            try {
+                              if (mounted) {
+                                prevPayStatus = currentActualPaymentStatus;
+                                setState(() {
+                                  currentActualPaymentStatus =
+                                      statusStr.toLowerCase();
+                                });
+                              }
+                              await jobProvider.updateJobPaymentStatus(
+                                  cargoJobInstance.id!.toString(),
+                                  statusStr); // Fixed ID type
+                              _fetchHistory(); // Added history refresh
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
-                                  content: Text('Error updating payment status: $e'),
-                                  backgroundColor: Colors.red,
-                                ),
+                                    content: Text(
+                                        'Payment status updated to ${statusStr.toUpperCase()}'),
+                                    backgroundColor: Colors.green),
                               );
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        'Error updating payment status: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                                currentActualPaymentStatus = prevPayStatus;
+                              }
                             }
-                          }
                           }
                         },
                         selectedColor: Theme.of(context).colorScheme.secondary,
                         backgroundColor: Colors.grey.shade700,
                       );
                     }).toList(),
-                  )
-              ),
+                  )),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 20)),
-
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-                child: Text('Job History', style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white)),
+                child: Text('Job History',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(color: Colors.white)),
               ),
             ),
             _isLoadingHistory
-                ? const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(16.0), child: CircularProgressIndicator())))
+                ? const SliverToBoxAdapter(
+                    child: Center(
+                        child: Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: CircularProgressIndicator())))
                 : _historyEntries.isEmpty
                     ? const SliverToBoxAdapter(
                         child: Padding(
                           padding: EdgeInsets.all(16.0),
-                          child: Center(child: Text('No history found for this job.', style: TextStyle(color: Colors.white70))),
+                          child: Center(
+                              child: Text('No history found for this job.',
+                                  style: TextStyle(color: Colors.white70))),
                         ),
                       )
                     : SliverList(
@@ -327,20 +437,37 @@ class _JobDetailsState extends State<JobDetails> {
                             final entry = _historyEntries[index];
                             return Card(
                               color: Colors.grey.shade800,
-                              margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
+                              margin: const EdgeInsets.symmetric(
+                                  horizontal: 16.0, vertical: 4.0),
                               child: ListTile(
                                 title: Text(
                                   'Field: ${entry.fieldChanged?.replaceAll('_', ' ').toUpperCase() ?? 'N/A'}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white),
                                 ),
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('Old Value: ${entry.oldValue ?? 'N/A'}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                                    Text('New Value: ${entry.newValue ?? 'N/A'}', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                                    Text(
+                                        'Old Value: ${entry.oldValue ?? 'N/A'}',
+                                        style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12)),
+                                    Text(
+                                        'New Value: ${entry.newValue ?? 'N/A'}',
+                                        style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 12)),
                                     const SizedBox(height: 4),
-                                    Text('Changed At: ${_formatDate(entry.changedAt)}', style: const TextStyle(color: Colors.grey, fontSize: 10)),
-                                    Text('Changed By: ${entry.changedBy ?? 'N/A'}', style: const TextStyle(color: Colors.grey, fontSize: 10)),
+                                    Text(
+                                        'Changed At: ${_formatDate(entry.changedAt)}',
+                                        style: const TextStyle(
+                                            color: Colors.grey, fontSize: 10)),
+                                    Text(
+                                        'Changed By: ${entry.changedBy ?? 'N/A'}',
+                                        style: const TextStyle(
+                                            color: Colors.grey, fontSize: 10)),
                                   ],
                                 ),
                                 dense: true,
@@ -358,8 +485,10 @@ class _JobDetailsState extends State<JobDetails> {
   }
 
   Future<void> _confirmDeleteJob() async {
-    final TextEditingController deleteConfirmController = TextEditingController();
-    final GlobalKey<FormFieldState<String>> confirmKey = GlobalKey<FormFieldState<String>>(); // For validation
+    final TextEditingController deleteConfirmController =
+        TextEditingController();
+    final GlobalKey<FormFieldState<String>> confirmKey =
+        GlobalKey<FormFieldState<String>>(); // For validation
     // isConfirmed is managed locally by StatefulBuilders or by checking controller directly.
 
     return showDialog<void>(
@@ -368,41 +497,41 @@ class _JobDetailsState extends State<JobDetails> {
       builder: (BuildContext dialogContext) {
         return AlertDialog(
           title: const Text('Confirm Deletion'),
-          content: StatefulBuilder( // Use StatefulBuilder to update button state
-            builder: (BuildContext context, StateSetter setState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  const Text("To delete this job, please type 'delete this' in the box below."),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    key: confirmKey,
-                    controller: deleteConfirmController,
-                    decoration: const InputDecoration(
-                      labelText: "Type 'delete this'",
-                      border: OutlineInputBorder(),
-                    ),
-                    autofocus: true,
-                    onChanged: (text) {
-                      // This setState is for the StatefulBuilder around the Column (dialog content)
-                      // It ensures the TextFormField validator is re-run if needed
-                      // and the button's StatefulBuilder will pick up the controller's new text.
-                      setState(() {}); 
-                      // Also explicitly validate to show error message dynamically
-                      confirmKey.currentState?.validate(); 
-                    },
-                    validator: (value) {
-                      if (value != 'delete this') {
-                        return "Text does not match.";
-                      }
-                      return null;
-                    },
+          content: StatefulBuilder(// Use StatefulBuilder to update button state
+              builder: (BuildContext context, StateSetter setState) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                const Text(
+                    "To delete this job, please type 'delete this' in the box below."),
+                const SizedBox(height: 16),
+                TextFormField(
+                  key: confirmKey,
+                  controller: deleteConfirmController,
+                  decoration: const InputDecoration(
+                    labelText: "Type 'delete this'",
+                    border: OutlineInputBorder(),
                   ),
-                ],
-              );
-            }
-          ),
+                  autofocus: true,
+                  onChanged: (text) {
+                    // This setState is for the StatefulBuilder around the Column (dialog content)
+                    // It ensures the TextFormField validator is re-run if needed
+                    // and the button's StatefulBuilder will pick up the controller's new text.
+                    setState(() {});
+                    // Also explicitly validate to show error message dynamically
+                    confirmKey.currentState?.validate();
+                  },
+                  validator: (value) {
+                    if (value?.toLowerCase().trim() != 'delete this') {
+                      return "Text does not match.";
+                    }
+                    return null;
+                  },
+                ),
+              ],
+            );
+          }),
           actions: <Widget>[
             TextButton(
               child: const Text('Cancel'),
@@ -410,46 +539,66 @@ class _JobDetailsState extends State<JobDetails> {
                 Navigator.of(dialogContext).pop();
               },
             ),
-            StatefulBuilder( // To enable/disable the confirm button
-               builder: (BuildContext context, StateSetter setState) {
-                 bool currentButtonEnabledState = deleteConfirmController.text == 'delete this';
+            StatefulBuilder(// To enable/disable the confirm button
+                builder: (BuildContext context, StateSetter setState) {
+              bool currentButtonEnabledState =
+                  deleteConfirmController.text.trim() == 'delete this';
 
-                 return TextButton(
-                   child: const Text('Confirm Delete', style: TextStyle(color: Colors.redAccent)),
-                   onPressed: currentButtonEnabledState ? () async {
-                     final int? jobId = widget.job['id'] as int?;
-                     if (jobId != null) {
-                       try {
-                         final provider = Provider.of<CargoJobProvider>(this.context, listen: false); // Use this.context for provider
-                         await provider.removeJob(jobId);
-                         
-                         Navigator.of(dialogContext).pop(); // Close the dialog
-                         if (mounted) {
-                            Navigator.of(this.context).pop(true); // Pop JobDetails screen, signal success (use this.context)
-                            ScaffoldMessenger.of(this.context).showSnackBar( //use this.context
-                              const SnackBar(content: Text('Job deleted successfully'), backgroundColor: Colors.green),
+              return TextButton(
+                child: Text('Confirm Delete',
+                    style: TextStyle(
+                        color: currentButtonEnabledState
+                            ? Color.fromARGB(255, 255, 82, 82)
+                            : Color.fromARGB(125, 255, 82, 82))),
+                onPressed: currentButtonEnabledState
+                    ? () async {
+                        final String? jobId = widget.job['id'] as String?;
+                        if (jobId != null) {
+                          try {
+                            final provider = Provider.of<CargoJobProvider>(
+                                this.context,
+                                listen: false); // Use this.context for provider
+                            await provider.removeJob(jobId);
+
+                            Navigator.of(dialogContext)
+                                .pop(); // Close the dialog
+                            if (mounted) {
+                              Navigator.of(this.context).pop(
+                                  true); // Pop JobDetails screen, signal success (use this.context)
+                              ScaffoldMessenger.of(this.context).showSnackBar(
+                                //use this.context
+                                const SnackBar(
+                                    content: Text('Job deleted successfully'),
+                                    backgroundColor: Colors.green),
+                              );
+                            }
+                          } catch (e) {
+                            Navigator.of(dialogContext)
+                                .pop(); // Close the dialog
+                            if (mounted) {
+                              ScaffoldMessenger.of(this.context).showSnackBar(
+                                //use this.context
+                                SnackBar(
+                                    content: Text('Error deleting job: $e'),
+                                    backgroundColor: Colors.red),
+                              );
+                            }
+                          }
+                        } else {
+                          Navigator.of(dialogContext).pop();
+                          if (mounted) {
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              //use this.context
+                              const SnackBar(
+                                  content: Text('Error: Job ID not found.'),
+                                  backgroundColor: Colors.red),
                             );
-                         }
-                       } catch (e) {
-                         Navigator.of(dialogContext).pop(); // Close the dialog
-                         if (mounted) {
-                           ScaffoldMessenger.of(this.context).showSnackBar( //use this.context
-                             SnackBar(content: Text('Error deleting job: $e'), backgroundColor: Colors.red),
-                           );
-                         }
-                       }
-                     } else {
-                        Navigator.of(dialogContext).pop();
-                         if (mounted) {
-                           ScaffoldMessenger.of(this.context).showSnackBar( //use this.context
-                             const SnackBar(content: Text('Error: Job ID not found.'), backgroundColor: Colors.red),
-                           );
-                         }
-                     }
-                   } : null, // Disable button if text doesn't match
-                 );
-               }
-            ),
+                          }
+                        }
+                      }
+                    : null, // Disable button if text doesn't match
+              );
+            }),
           ],
         );
       },
@@ -457,15 +606,15 @@ class _JobDetailsState extends State<JobDetails> {
   }
 }
 
-class FullScreenImage extends StatelessWidget { 
+class FullScreenImage extends StatelessWidget {
   const FullScreenImage({super.key, required this.imageUrl});
-  final String imageUrl; 
+  final String imageUrl;
 
   @override
   Widget build(BuildContext context) {
     return Hero(
-      tag: imageUrl, 
-      child: Scaffold( 
+      tag: imageUrl,
+      child: Scaffold(
         backgroundColor: Colors.black.withOpacity(0.8),
         appBar: AppBar(
           backgroundColor: Colors.transparent,
@@ -477,16 +626,18 @@ class FullScreenImage extends StatelessWidget {
         ),
         body: GestureDetector(
           onVerticalDragEnd: (details) {
-            if (details.primaryVelocity != null && details.primaryVelocity!.abs() > 200) { 
+            if (details.primaryVelocity != null &&
+                details.primaryVelocity!.abs() > 200) {
               Navigator.pop(context);
             }
           },
           child: PhotoView(
-            backgroundDecoration: const BoxDecoration(color: Colors.transparent),
-            imageProvider: CachedNetworkImageProvider(imageUrl), 
+            backgroundDecoration:
+                const BoxDecoration(color: Colors.transparent),
+            imageProvider: CachedNetworkImageProvider(imageUrl),
             loadingBuilder: (context, event) => Center(
               child: CircularProgressIndicator(
-                value: event == null || event.expectedTotalBytes == null 
+                value: event == null || event.expectedTotalBytes == null
                     ? null
                     : event.cumulativeBytesLoaded / event.expectedTotalBytes!,
               ),

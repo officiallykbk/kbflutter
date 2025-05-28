@@ -8,10 +8,9 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:bizorganizer/models/status_constants.dart'; 
-import 'package:bizorganizer/utils/us_states_data.dart'; // Task 1: Import us_states_data.dart
+import 'package:bizorganizer/utils/us_states_data.dart';
 
-// Task 3: Remove the old usStates list
-// const List<String> usStates = [ ... ]; 
+
 
 class AddJob extends StatefulWidget { 
   final CargoJob? job; 
@@ -69,12 +68,11 @@ class _AddJobState extends State<AddJob> {
       _estimatedDeliveryDate = job.estimatedDeliveryDate; 
       _actualDeliveryDate = job.actualDeliveryDate; 
 
-      // Task 5: Verify initState for Edit Mode
       // Assuming job.pickupLocation and job.dropoffLocation store abbreviations
       if (job.pickupLocation != null && usStatesAndAbbreviations.any((s) => s.abbr == job.pickupLocation)) {
         _selectedPickupLocationState = job.pickupLocation;
       } else {
-         _selectedPickupLocationState = null; // Or try to find by name if legacy data might have full names
+         _selectedPickupLocationState = null; 
       }
 
       if (job.dropoffLocation != null && usStatesAndAbbreviations.any((s) => s.abbr == job.dropoffLocation)) {
@@ -159,12 +157,12 @@ class _AddJobState extends State<AddJob> {
   Future<void> _uploadImageToSupabase(File image, String imgName) async {
     try {
       final String path = 'images/$imgName--${DateTime.now().toIso8601String()}.png';
-      await supabase.storage.from('BizBucket').upload(path, image);
+      await supabase.storage.from('receipts').upload(path, image);
       
       if (!mounted) return;
       CustomSnackBar.show(context, 'Image Uploaded', Icons.check);
       setState(() {
-        _imageUrl = supabase.storage.from('BizBucket').getPublicUrl(path);
+        _imageUrl = supabase.storage.from('receipts').getPublicUrl(path);
       });
     } catch (e) {
       print('Failed to upload image: $e');
@@ -230,7 +228,7 @@ class _AddJobState extends State<AddJob> {
     try {
       final provider = context.read<CargoJobProvider>();
       if (widget.isEditing) {
-        await provider.editJob(jobData.id!, jobData);
+        // await provider.editJob(jobData.id!, jobData);
         if (mounted) CustomSnackBar.show(context, 'Job updated successfully', Icons.check);
       } else {
         await provider.addJob(jobData);
@@ -282,7 +280,6 @@ class _AddJobState extends State<AddJob> {
     if (widget.isEditing) {
       deliveryDropdownItemsEnums = [ 
         DeliveryStatus.Scheduled,
-        DeliveryStatus.InProgress,
         DeliveryStatus.Delivered,
         DeliveryStatus.Cancelled,
       ];
@@ -291,7 +288,7 @@ class _AddJobState extends State<AddJob> {
     }
 
     List<PaymentStatus> paymentDropdownItemsEnums = widget.isEditing
-        ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
+        ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Refunded] 
         : [PaymentStatus.Pending, PaymentStatus.Paid]; 
 
     return Scaffold(
@@ -472,14 +469,14 @@ class _AddJobState extends State<AddJob> {
                       ),
                       const SizedBox(height: 16),
                       DateSelectWidget(
-                        label: "Est. Delivery Date (Optional)",
+                        label: "Est. Delivery Date",
                         selectedDate: _estimatedDeliveryDate,
                         onDateSelected: (date) {
                           setState(() {
                             _estimatedDeliveryDate = date;
                           });
                         },
-                        isOptional: true,
+                        isOptional: false,
                       ),
                       const SizedBox(height: 16),
                       DateSelectWidget(
@@ -752,7 +749,7 @@ class PaymentStatusWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     List<PaymentStatus> items = isEditing
-      ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Cancelled, PaymentStatus.Refunded, PaymentStatus.Overdue, PaymentStatus.Partial] 
+      ? [PaymentStatus.Pending, PaymentStatus.Paid, PaymentStatus.Refunded] 
       : [PaymentStatus.Pending, PaymentStatus.Paid];
 
     return DropdownButtonFormField<String>(

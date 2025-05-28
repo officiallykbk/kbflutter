@@ -1,7 +1,6 @@
 // Delivery Statuses
 enum DeliveryStatus {
   Scheduled,    // User can select
-  InProgress,   // Internal status, potentially grouped with Scheduled for some views
   Delivered,    // User can select (formerly Completed)
   Cancelled,    // User can select
   Delayed,      // Automatic/derived (formerly Overdue)
@@ -45,10 +44,7 @@ DeliveryStatus? deliveryStatusFromString(String? statusString) {
 enum PaymentStatus {
   Pending,
   Paid,
-  Cancelled, 
   Refunded, 
-  Overdue, 
-  Partial, 
 }
 
 String paymentStatusToString(PaymentStatus status) {

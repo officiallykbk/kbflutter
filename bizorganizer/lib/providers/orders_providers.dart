@@ -1,6 +1,6 @@
-import 'package:bizorganizer/models/cargo_job.dart'; 
+import 'package:bizorganizer/models/cargo_job.dart';
 import 'package:bizorganizer/models/job_history_entry.dart';
-import 'package:bizorganizer/models/status_constants.dart'; 
+import 'package:bizorganizer/models/status_constants.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,9 +10,11 @@ class CargoJobProvider extends ChangeNotifier {
   String? _image;
   List<Map<String, dynamic>> _jobs = [];
   List<Map<String, dynamic>> _completedJobs = []; // Will filter for Delivered
-  List<Map<String, dynamic>> _pendingJobs = [];   // Will include Scheduled, InProgress
+  List<Map<String, dynamic>> _pendingJobs =
+      []; // Will include Scheduled, InProgress
   List<Map<String, dynamic>> _cancelledJobs = [];
-  List<Map<String, dynamic>> _delayedJobs = [];   // For jobs explicitly marked as Delayed or calculated as such
+  List<Map<String, dynamic>> _delayedJobs =
+      []; // For jobs explicitly marked as Delayed or calculated as such
 
   List<Map<String, dynamic>> _paidJobs = [];
   List<Map<String, dynamic>> _pendingPaymentJobs = [];
@@ -20,10 +22,12 @@ class CargoJobProvider extends ChangeNotifier {
 
   String? get image => _image;
   List<Map<String, dynamic>> get jobs => _jobs;
-  List<Map<String, dynamic>> get completedJobs => _completedJobs; // Getter for Delivered jobs
+  List<Map<String, dynamic>> get completedJobs =>
+      _completedJobs; // Getter for Delivered jobs
   List<Map<String, dynamic>> get pendingJobs => _pendingJobs;
   List<Map<String, dynamic>> get cancelledJobs => _cancelledJobs;
-  List<Map<String, dynamic>> get delayedJobs => _delayedJobs; // Getter for Delayed jobs
+  List<Map<String, dynamic>> get delayedJobs =>
+      _delayedJobs; // Getter for Delayed jobs
 
   List<Map<String, dynamic>> get paidJobs => _paidJobs;
   List<Map<String, dynamic>> get pendingPayments => _pendingPaymentJobs;
@@ -36,28 +40,46 @@ class CargoJobProvider extends ChangeNotifier {
           .select()
           .order('created_at', ascending: false);
 
-      List<Map<String, dynamic>> jobsData = (response as List).cast<Map<String, dynamic>>();
+      List<Map<String, dynamic>> jobsData =
+          (response as List).cast<Map<String, dynamic>>();
       _jobs = jobsData;
 
       // Filter based on Delivery Status using new enum values
-      _completedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Delivered).toLowerCase()).toList();
-      
+      _completedJobs = jobsData
+          .where((job) =>
+              job['delivery_status']?.toString().toLowerCase() ==
+              deliveryStatusToString(DeliveryStatus.Delivered).toLowerCase())
+          .toList();
+
       _pendingJobs = jobsData.where((job) {
         final status = job['delivery_status']?.toString().toLowerCase();
-        return status == deliveryStatusToString(DeliveryStatus.Scheduled).toLowerCase() || 
-               status == deliveryStatusToString(DeliveryStatus.InProgress).toLowerCase();
+        return status ==
+            deliveryStatusToString(DeliveryStatus.Scheduled).toLowerCase();
       }).toList();
 
-      _cancelledJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Cancelled).toLowerCase()).toList();
-      
-      _delayedJobs = jobsData.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Delayed).toLowerCase()).toList();
+      _cancelledJobs = jobsData
+          .where((job) =>
+              job['delivery_status']?.toString().toLowerCase() ==
+              deliveryStatusToString(DeliveryStatus.Cancelled).toLowerCase())
+          .toList();
 
-
+      _delayedJobs = jobsData
+          .where((job) =>
+              job['delivery_status']?.toString().toLowerCase() ==
+              deliveryStatusToString(DeliveryStatus.Delayed).toLowerCase())
+          .toList();
 
       // Payment Status (remains unchanged by this task)
-      _paidJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Paid).toLowerCase()).toList();
-      _pendingPaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Pending).toLowerCase()).toList();
-      _overduePaymentJobs = jobsData.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Overdue).toLowerCase()).toList();
+      _paidJobs = jobsData
+          .where((job) =>
+              job['payment_status']?.toString().toLowerCase() ==
+              paymentStatusToString(PaymentStatus.Paid).toLowerCase())
+          .toList();
+      _pendingPaymentJobs = jobsData
+          .where((job) =>
+              job['payment_status']?.toString().toLowerCase() ==
+              paymentStatusToString(PaymentStatus.Pending).toLowerCase())
+          .toList();
 
       notifyListeners();
     } catch (e) {
@@ -67,9 +89,6 @@ class CargoJobProvider extends ChangeNotifier {
 
   Future<void> addJob(CargoJob job) async {
     try {
-      if (job.shipperName != null && job.shipperName!.isNotEmpty) {
-        await _supabase.from('customer').upsert({'clientName': job.shipperName});
-      }
       await _supabase.from('cargo_jobs').insert(job.toJson());
       await fetchJobsData();
     } catch (e) {
@@ -77,89 +96,133 @@ class CargoJobProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> removeJob(int jobId) async {
+  Future<void> removeJob(String jobId) async {
     try {
       await _supabase.from('cargo_jobs').delete().eq('id', jobId);
-      await fetchJobsData(); 
+      await fetchJobsData();
       print('Job removed successfully');
     } catch (e) {
       print('Error removing job: $e');
     }
   }
 
-  Future<void> editJob(String jobId, CargoJob updatedJobData) async { 
+  // Future<void> editJob(String jobId, CargoJob updatedJobData) async {
+  //   try {
+  //     final currentJobSnapshot =
+  //         await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
+  //     final currentJob = CargoJob.fromJson(currentJobSnapshot);
+  //     final userId = _supabase.auth.currentUser?.id ?? 'system_edit';
+
+  //     Map<String, dynamic> updatePayload = updatedJobData.toJson();
+
+  //     // If delivery status is being set to Cancelled, also set payment status to Cancelled
+  //     if (updatedJobData.deliveryStatus ==
+  //         deliveryStatusToString(DeliveryStatus.Cancelled)) {
+  //       updatePayload['payment_status'] =
+  //           paymentStatusToString(PaymentStatus.Refunded);
+  //     }
+
+  //     await _supabase.from('cargo_jobs').update(updatePayload).eq('id', jobId);
+
+  //     final fieldsToCompare = {
+  //       'shipper_name': {
+  //         'old': currentJob.shipperName,
+  //         'new': updatedJobData.shipperName
+  //       },
+  //       'payment_status': {
+  //         'old': currentJob.paymentStatus,
+  //         'new': updatePayload['payment_status']
+  //       },
+  //       'delivery_status': {
+  //         'old': currentJob.deliveryStatus,
+  //         'new': updatedJobData.deliveryStatus
+  //       },
+  //       'pickup_location': {
+  //         'old': currentJob.pickupLocation,
+  //         'new': updatedJobData.pickupLocation
+  //       },
+  //       'dropoff_location': {
+  //         'old': currentJob.dropoffLocation,
+  //         'new': updatedJobData.dropoffLocation
+  //       },
+  //       'pickup_date': {
+  //         'old': currentJob.pickupDate?.toIso8601String(),
+  //         'new': updatedJobData.pickupDate?.toIso8601String()
+  //       },
+  //       'estimated_delivery_date': {
+  //         'old': currentJob.estimatedDeliveryDate?.toIso8601String(),
+  //         'new': updatedJobData.estimatedDeliveryDate?.toIso8601String()
+  //       },
+  //       'actual_delivery_date': {
+  //         'old': currentJob.actualDeliveryDate?.toIso8601String(),
+  //         'new': updatedJobData.actualDeliveryDate?.toIso8601String()
+  //       },
+  //       'agreed_price': {
+  //         'old': currentJob.agreedPrice?.toString(),
+  //         'new': updatedJobData.agreedPrice?.toString()
+  //       },
+  //       'notes': {'old': currentJob.notes, 'new': updatedJobData.notes},
+  //       'receipt_url': {
+  //         'old': currentJob.receiptUrl,
+  //         'new': updatedJobData.receiptUrl
+  //       },
+  //     };
+
+  //     for (var field in fieldsToCompare.entries) {
+  //       String oldValue = field.value['old'] ?? '';
+  //       String newValue = field.value['new'] ?? '';
+  //       if (oldValue != newValue) {
+  //         await addJobHistoryRecord(
+  //             jobId, field.key, oldValue, newValue, userId);
+  //       }
+  //     }
+
+  //     await fetchJobsData();
+  //     print('Job updated successfully');
+  //   } catch (e) {
+  //     print('Error updating job: $e');
+  //   }
+  // }
+
+  Future<void> updateJobDeliveryStatus(
+      String jobId, String newDeliveryStatus) async {
     try {
-      final currentJobSnapshot = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
-      final currentJob = CargoJob.fromJson(currentJobSnapshot);
-      final userId = _supabase.auth.currentUser?.id ?? 'system_edit';
-
-      Map<String, dynamic> updatePayload = updatedJobData.toJson();
-
-      // If delivery status is being set to Cancelled, also set payment status to Cancelled
-      if (updatedJobData.deliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
-        updatePayload['payment_status'] = paymentStatusToString(PaymentStatus.Cancelled);
-      }
-      
-      await _supabase.from('cargo_jobs').update(updatePayload).eq('id', jobId);
-      
-      final fieldsToCompare = {
-        'shipper_name': {'old': currentJob.shipperName, 'new': updatedJobData.shipperName},
-        'payment_status': {'old': currentJob.paymentStatus, 'new': updatePayload['payment_status']}, 
-        'delivery_status': {'old': currentJob.deliveryStatus, 'new': updatedJobData.deliveryStatus},
-        'pickup_location': {'old': currentJob.pickupLocation, 'new': updatedJobData.pickupLocation},
-        'dropoff_location': {'old': currentJob.dropoffLocation, 'new': updatedJobData.dropoffLocation},
-        'pickup_date': {'old': currentJob.pickupDate?.toIso8601String(), 'new': updatedJobData.pickupDate?.toIso8601String()},
-        'estimated_delivery_date': {'old': currentJob.estimatedDeliveryDate?.toIso8601String(), 'new': updatedJobData.estimatedDeliveryDate?.toIso8601String()},
-        'actual_delivery_date': {'old': currentJob.actualDeliveryDate?.toIso8601String(), 'new': updatedJobData.actualDeliveryDate?.toIso8601String()},
-        'agreed_price': {'old': currentJob.agreedPrice?.toString(), 'new': updatedJobData.agreedPrice?.toString()},
-        'notes': {'old': currentJob.notes, 'new': updatedJobData.notes},
-        'receipt_url': {'old': currentJob.receiptUrl, 'new': updatedJobData.receiptUrl},
-      };
-
-      for (var field in fieldsToCompare.entries) {
-        String oldValue = field.value['old'] ?? '';
-        String newValue = field.value['new'] ?? '';
-        if (oldValue != newValue) {
-          await addJobHistoryRecord(jobId, field.key, oldValue, newValue, userId);
-        }
-      }
-
-      await fetchJobsData();
-      print('Job updated successfully');
-    } catch (e) {
-      print('Error updating job: $e');
-    }
-  }
-
-  Future<void> updateJobDeliveryStatus(String jobId, String newDeliveryStatus) async { 
-    try {
-      final currentJobData = await _supabase.from('cargo_jobs').select('delivery_status, payment_status').eq('id', jobId).single();
-      final oldDeliveryStatus = currentJobData['delivery_status'] as String? ?? deliveryStatusToString(DeliveryStatus.Scheduled); // Default if null
-      final String currentPaymentStatus = currentJobData['payment_status'] as String? ?? paymentStatusToString(PaymentStatus.Pending);
+      final currentJobData = await _supabase
+          .from('cargo_jobs')
+          .select('delivery_status, payment_status')
+          .eq('id', jobId)
+          .single();
+      final oldDeliveryStatus = currentJobData['delivery_status'] as String? ??
+          deliveryStatusToString(DeliveryStatus.Scheduled); // Default if null
+      final String currentPaymentStatus =
+          currentJobData['payment_status'] as String? ??
+              paymentStatusToString(PaymentStatus.Pending);
       final userId = _supabase.auth.currentUser?.id ?? 'system_status_change';
 
-      Map<String, dynamic> updatePayload = {'delivery_status': newDeliveryStatus};
+      Map<String, dynamic> updatePayload = {
+        'delivery_status': newDeliveryStatus
+      };
 
-      if (newDeliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
-        if (currentPaymentStatus != paymentStatusToString(PaymentStatus.Cancelled)) {
-          updatePayload['payment_status'] = paymentStatusToString(PaymentStatus.Cancelled);
+      if (newDeliveryStatus ==
+          deliveryStatusToString(DeliveryStatus.Cancelled)) {
+        if (currentPaymentStatus !=
+            paymentStatusToString(PaymentStatus.Refunded)) {
+          updatePayload['payment_status'] =
+              paymentStatusToString(PaymentStatus.Refunded);
         }
       }
 
       await _supabase.from('cargo_jobs').update(updatePayload).eq('id', jobId);
-      
+
       if (oldDeliveryStatus != newDeliveryStatus) {
-        await addJobHistoryRecord(jobId, 'delivery_status', oldDeliveryStatus, newDeliveryStatus, userId);
+        await addJobHistoryRecord(jobId, 'delivery_status', oldDeliveryStatus,
+            newDeliveryStatus, userId);
       }
 
-      if (updatePayload.containsKey('payment_status') && currentPaymentStatus != updatePayload['payment_status']) {
-         await addJobHistoryRecord(
-            jobId,
-            'payment_status',
-            currentPaymentStatus, 
-            updatePayload['payment_status'] as String,
-            userId 
-          );
+      if (updatePayload.containsKey('payment_status') &&
+          currentPaymentStatus != updatePayload['payment_status']) {
+        await addJobHistoryRecord(jobId, 'payment_status', currentPaymentStatus,
+            updatePayload['payment_status'] as String, userId);
       }
 
       await fetchJobsData();
@@ -171,14 +234,18 @@ class CargoJobProvider extends ChangeNotifier {
 
   Future<void> updateJobPaymentStatus(String jobId, String newStatus) async {
     try {
-      final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
-      final oldStatus = currentJobData['payment_status'] as String?;
+      final currentJobData =
+          await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
+      final oldStatus = currentJobData['payment_status'] as String;
       final userId = _supabase.auth.currentUser?.id ?? 'system_status_change';
 
-      await _supabase.from('cargo_jobs').update({'payment_status': newStatus}).eq('id', jobId);
+      await _supabase
+          .from('cargo_jobs')
+          .update({'payment_status': newStatus}).eq('id', jobId);
 
       if (oldStatus != newStatus) {
-         await addJobHistoryRecord(jobId, 'payment_status', oldStatus ?? '', newStatus, userId);
+        await addJobHistoryRecord(
+            jobId, 'payment_status', oldStatus, newStatus, userId);
       }
       await fetchJobsData();
       print('Job payment status updated successfully for job $jobId');
@@ -192,34 +259,38 @@ class CargoJobProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<List<JobHistoryEntry>> fetchJobHistory(int jobId) async {
+  Future<List<JobHistoryEntry>> fetchJobHistory(String jobId) async {
     try {
       final response = await _supabase
           .from('job_history')
           .select()
           .eq('job_id', jobId)
-          .order('changed_at', ascending: false); 
+          .order('changed_at', ascending: false);
 
       final List<dynamic> data = response as List<dynamic>;
-      return data.map((json) => JobHistoryEntry.fromJson(json as Map<String, dynamic>)).toList();
+      return data
+          .map((json) => JobHistoryEntry.fromJson(json as Map<String, dynamic>))
+          .toList();
     } catch (e) {
       print('Error fetching job history for job $jobId: $e');
-      return []; 
+      return [];
     }
   }
 
-  Future<void> addJobHistoryRecord(String jobId, String fieldChanged, String oldValue, String newValue, String changedBy) async {
+  Future<void> addJobHistoryRecord(String jobId, String fieldChanged,
+      String oldValue, String newValue, String changedBy) async {
     try {
       final historyEntry = JobHistoryEntry(
         jobId: jobId,
         fieldChanged: fieldChanged,
         oldValue: oldValue,
         newValue: newValue,
-        changedAt: DateTime.now().toIso8601String(), 
+        changedAt: DateTime.now().toIso8601String(),
         changedBy: changedBy,
       );
       await _supabase.from('job_history').insert(historyEntry.toJson());
-      print('Job history entry added successfully for job $jobId: $fieldChanged from "$oldValue" to "$newValue" by $changedBy');
+      print(
+          'Job history entry added successfully for job $jobId: $fieldChanged from "$oldValue" to "$newValue" by $changedBy');
     } catch (e) {
       print('Error adding job history entry for job $jobId: $e');
     }
@@ -227,7 +298,8 @@ class CargoJobProvider extends ChangeNotifier {
 
   Future<List<String>> fetchUniqueCustomerNames() async {
     try {
-      final response = await _supabase.from('customer').select('clientName');
+      final response =
+          await _supabase.from('cargo_jobs').select('shipper_name');
 
       // The response is directly a List<Map<String, dynamic>> if successful, or can throw PostgrestException
       // Supabase Dart client typically throws an error on failure, which is caught by the catch block.
@@ -237,14 +309,15 @@ class CargoJobProvider extends ChangeNotifier {
       if (response is List) {
         final Set<String> uniqueNames = {};
         for (var item in response) {
-          if (item is Map<String, dynamic> && item['clientName'] != null) {
-            uniqueNames.add(item['clientName'] as String);
+          if (item is Map<String, dynamic> && item['shipper_name'] != null) {
+            uniqueNames.add(item['shipper_name'] as String);
           }
         }
         return uniqueNames.toList();
       } else {
         // This case should ideally not be reached if Supabase client functions as expected (throws on error)
-        print('Error fetching unique customer names: Unexpected response format.');
+        print(
+            'Error fetching unique customer names: Unexpected response format.');
         return [];
       }
     } catch (e) {
