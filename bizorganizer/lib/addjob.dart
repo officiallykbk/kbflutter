@@ -8,10 +8,9 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:bizorganizer/models/status_constants.dart'; 
-import 'package:bizorganizer/utils/us_states_data.dart'; // Task 1: Import us_states_data.dart
+import 'package:bizorganizer/utils/us_states_data.dart';
 
-// Task 3: Remove the old usStates list
-// const List<String> usStates = [ ... ]; 
+
 
 class AddJob extends StatefulWidget { 
   final CargoJob? job; 
@@ -69,12 +68,11 @@ class _AddJobState extends State<AddJob> {
       _estimatedDeliveryDate = job.estimatedDeliveryDate; 
       _actualDeliveryDate = job.actualDeliveryDate; 
 
-      // Task 5: Verify initState for Edit Mode
       // Assuming job.pickupLocation and job.dropoffLocation store abbreviations
       if (job.pickupLocation != null && usStatesAndAbbreviations.any((s) => s.abbr == job.pickupLocation)) {
         _selectedPickupLocationState = job.pickupLocation;
       } else {
-         _selectedPickupLocationState = null; // Or try to find by name if legacy data might have full names
+         _selectedPickupLocationState = null; 
       }
 
       if (job.dropoffLocation != null && usStatesAndAbbreviations.any((s) => s.abbr == job.dropoffLocation)) {

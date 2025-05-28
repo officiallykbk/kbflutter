@@ -227,7 +227,7 @@ class CargoJobProvider extends ChangeNotifier {
 
   Future<List<String>> fetchUniqueCustomerNames() async {
     try {
-      final response = await _supabase.from('customer').select('clientName');
+      final response = await _supabase.from('cargo_jobs').select('shipper_name');
 
       // The response is directly a List<Map<String, dynamic>> if successful, or can throw PostgrestException
       // Supabase Dart client typically throws an error on failure, which is caught by the catch block.
@@ -237,8 +237,8 @@ class CargoJobProvider extends ChangeNotifier {
       if (response is List) {
         final Set<String> uniqueNames = {};
         for (var item in response) {
-          if (item is Map<String, dynamic> && item['clientName'] != null) {
-            uniqueNames.add(item['clientName'] as String);
+          if (item is Map<String, dynamic> && item['shipper_name'] != null) {
+            uniqueNames.add(item['shipper_name'] as String);
           }
         }
         return uniqueNames.toList();
