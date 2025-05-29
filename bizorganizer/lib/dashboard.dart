@@ -11,6 +11,7 @@ import 'package:bizorganizer/providers/orders_providers.dart'; // Task 1.d: Impo
 import 'package:bizorganizer/models/cargo_job.dart'; // Task 1.d: Import CargoJob model
 import 'package:bizorganizer/widgets/revenue_trend_chart_widget.dart'; // Task 1.d: Import RevenueTrendChartWidget
 import 'package:bizorganizer/models/status_constants.dart'; // For payment status options
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart'; // Import for animations
 
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
@@ -162,7 +163,7 @@ class _DashboardState extends State<Dashboard> {
             return CustomScrollView(
               controller: _scrollController,
               slivers: [
-                // Task 1.d: Replace placeholder with new SliverToBoxAdapter for filters and chart
+                // 1. Revenue Overview (Chart)
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -206,9 +207,9 @@ class _DashboardState extends State<Dashboard> {
                                 );
                               },
                               child: Hero(
-                                tag: 'revenueTrendChartHero', 
+                                tag: 'revenueTrendChartHero',
                                 child: RevenueTrendChartWidget(
-                                  jobs: allJobs.map((jobMap) => CargoJob.fromJson(jobMap)).toList(), 
+                                  jobs: allJobs.map((jobMap) => CargoJob.fromJson(jobMap)).toList(),
                                   startDate: _dashboardStartDate,
                                   endDate: _dashboardEndDate,
                                   paymentStatusFilter: _dashboardPaymentStatusFilter,
@@ -222,6 +223,7 @@ class _DashboardState extends State<Dashboard> {
                     ),
                   ),
                 ),
+                // 2. Summary Cards (Total, Pending, etc.)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(16,0,16,16), // Adjusted padding
                   sliver: SliverList(
@@ -230,7 +232,7 @@ class _DashboardState extends State<Dashboard> {
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            _buildSummaryCard(context, 'Total Jobs', _totalJobsCount, Colors.blue.shade700), 
+                            _buildSummaryCard(context, 'Total Jobs', _totalJobsCount, Colors.blue.shade700),
                             const SizedBox(width: 8),
                             _buildSummaryCard(context, 'Pending', _pendingJobsCount, Colors.orange.shade700),
                             const SizedBox(width: 8),
@@ -245,15 +247,25 @@ class _DashboardState extends State<Dashboard> {
                     ]),
                   ),
                 ),
+                // 3. Job List (Main list of all jobs)
                 SliverPadding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (BuildContext context, int index) {
-                        final job = displayJobs[index]; 
-                        return _buildJobCard(context, job); 
+                        final job = displayJobs[index];
+                        return AnimationConfiguration.staggeredList(
+                          position: index,
+                          duration: const Duration(milliseconds: 375),
+                          child: SlideAnimation(
+                            verticalOffset: 50.0,
+                            child: FadeInAnimation(
+                              child: _buildJobCard(context, job),
+                            ),
+                          ),
+                        );
                       },
-                      childCount: _totalJobsCount, 
+                      childCount: _totalJobsCount,
                     ),
                   ),
                 ),

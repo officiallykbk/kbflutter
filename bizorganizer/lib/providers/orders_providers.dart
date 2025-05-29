@@ -1,11 +1,16 @@
 import 'package:bizorganizer/models/cargo_job.dart';
 import 'package:bizorganizer/models/job_history_entry.dart';
 import 'package:bizorganizer/models/status_constants.dart';
+import 'package:bizorganizer/providers/loading_provider.dart'; // Import LoadingProvider
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CargoJobProvider extends ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
+  final LoadingProvider _loadingProvider; // Add LoadingProvider field
+
+  // Update the constructor
+  CargoJobProvider(this._loadingProvider);
 
   String? _image;
   List<Map<String, dynamic>> _jobs = [];
@@ -34,6 +39,7 @@ class CargoJobProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get overduePayments => _overduePaymentJobs;
 
   Future<void> fetchJobsData() async {
+    _loadingProvider.setLoading(true); // Set loading true at the beginning
     try {
       final response = await _supabase
           .from('cargo_jobs')
@@ -84,6 +90,9 @@ class CargoJobProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       print('Error fetching jobs data: $e');
+      // Potentially rethrow or handle error appropriately
+    } finally {
+      _loadingProvider.setLoading(false); // Set loading false in finally
     }
   }
 
@@ -115,7 +124,7 @@ class CargoJobProvider extends ChangeNotifier {
 
   //     Map<String, dynamic> updatePayload = updatedJobData.toJson();
 
-  //     // If delivery status is being set to Cancelled, also set payment status to Cancelled
+  //     // If delivery status is being set to Cancelled, also set payment status to Refunded
   //     if (updatedJobData.deliveryStatus ==
   //         deliveryStatusToString(DeliveryStatus.Cancelled)) {
   //       updatePayload['payment_status'] =
@@ -131,7 +140,7 @@ class CargoJobProvider extends ChangeNotifier {
   //       },
   //       'payment_status': {
   //         'old': currentJob.paymentStatus,
-  //         'new': updatePayload['payment_status']
+  //         'new': updatePayload['payment_status'] // Use the value from updatePayload
   //       },
   //       'delivery_status': {
   //         'old': currentJob.deliveryStatus,

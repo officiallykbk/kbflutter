@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:bizorganizer/models/job_history_entry.dart';
 import 'package:bizorganizer/models/cargo_job.dart';
 import 'package:bizorganizer/models/status_constants.dart';
+import 'package:bizorganizer/providers/loading_provider.dart'; // Added import
 import 'package:bizorganizer/utils/us_states_data.dart'; // Added import
 
 class JobDetails extends StatefulWidget {
@@ -70,15 +71,20 @@ class _JobDetailsState extends State<JobDetails> {
 
   Future<void> _fetchHistory() async {
     if (!mounted) return;
-    setState(() {
-      _isLoadingHistory = true;
-    });
+    final loadingProvider = context.read<LoadingProvider>();
+    loadingProvider.setLoading(true);
+    // setState(() { // Keep local _isLoadingHistory if needed for specific UI elements
+    //   _isLoadingHistory = true;
+    // });
     final jobId = widget.job['id'] as String?;
     if (jobId == null) {
-      setState(() {
-        _isLoadingHistory = false;
-        print("Job ID is null, cannot fetch history.");
-      });
+      if (mounted) { // Ensure mounted check before setState
+        setState(() {
+          _isLoadingHistory = false; // Still manage local state if kept
+        });
+      }
+      loadingProvider.setLoading(false); // Ensure global loader is turned off
+      print("Job ID is null, cannot fetch history.");
       return;
     }
     try {
@@ -87,18 +93,23 @@ class _JobDetailsState extends State<JobDetails> {
       if (mounted) {
         setState(() {
           _historyEntries = entries;
-          _isLoadingHistory = false;
+          // _isLoadingHistory = false; // Manage local state if kept
         });
       }
     } catch (e) {
       print("Error fetching job history in JobDetails: $e");
       if (mounted) {
-        setState(() {
-          _isLoadingHistory = false;
-        });
+        // setState(() { // Manage local state if kept
+        //   _isLoadingHistory = false;
+        // });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error fetching job history: $e')),
         );
+      }
+    } finally {
+      loadingProvider.setLoading(false);
+      if (mounted) { // Ensure mounted check before setState for local loader
+         setState(() { _isLoadingHistory = false; }); // Update local loader here
       }
     }
   }
@@ -294,8 +305,9 @@ class _JobDetailsState extends State<JobDetails> {
                       selected: currentActualDeliveryStatus ==
                           statusStr.toLowerCase(),
                       onSelected: (selected) async {
-                        // Made async
                         if (selected) {
+                          final loadingProvider = context.read<LoadingProvider>();
+                          loadingProvider.setLoading(true);
                           try {
                             await jobProvider.updateJobDeliveryStatus(
                                 cargoJobInstance.id!.toString(), statusStr);
@@ -305,7 +317,7 @@ class _JobDetailsState extends State<JobDetails> {
                                 currentActualDeliveryStatus =
                                     statusStr.toLowerCase();
                               });
-                              _fetchHistory(); // Added history refresh
+                              _fetchHistory();
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                     content: Text(
@@ -327,6 +339,8 @@ class _JobDetailsState extends State<JobDetails> {
                                     prevDelivStatus.toLowerCase();
                               });
                             }
+                          } finally {
+                            loadingProvider.setLoading(false);
                           }
                         }
                       },
@@ -367,26 +381,33 @@ class _JobDetailsState extends State<JobDetails> {
                             statusStr.toLowerCase(),
                         onSelected: (selected) async {
                           if (selected) {
+                            final loadingProvider = context.read<LoadingProvider>();
+                            loadingProvider.setLoading(true);
                             try {
-                              if (mounted) {
-                                prevPayStatus = currentActualPaymentStatus;
-                                setState(() {
-                                  currentActualPaymentStatus =
-                                      statusStr.toLowerCase();
-                                });
+                              // It's better to set state after the async call if it might fail
+                              // and you need to revert. However, for immediate UI feedback, this is okay.
+                              // String oldPaymentStatus = currentActualPaymentStatus; // Keep old status for revert
+                              if (mounted) { // Check mounted before setState
+                                  prevPayStatus = currentActualPaymentStatus;
+                                  setState(() {
+                                    currentActualPaymentStatus = statusStr.toLowerCase();
+                                  });
                               }
+
                               await jobProvider.updateJobPaymentStatus(
                                   cargoJobInstance.id!.toString(),
-                                  statusStr); // Fixed ID type
-                              _fetchHistory(); // Added history refresh
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text(
-                                        'Payment status updated to ${statusStr.toUpperCase()}'),
-                                    backgroundColor: Colors.green),
-                              );
+                                  statusStr);
+                              _fetchHistory();
+                              if(mounted){ // Check mounted before ScaffoldMessenger
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                      content: Text(
+                                          'Payment status updated to ${statusStr.toUpperCase()}'),
+                                      backgroundColor: Colors.green),
+                                );
+                              }
                             } catch (e) {
-                              if (mounted) {
+                              if (mounted) { // Check mounted before ScaffoldMessenger and setState
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
@@ -394,8 +415,12 @@ class _JobDetailsState extends State<JobDetails> {
                                     backgroundColor: Colors.red,
                                   ),
                                 );
-                                currentActualPaymentStatus = prevPayStatus;
+                                setState(() { // Revert on error
+                                   currentActualPaymentStatus = prevPayStatus;
+                                });
                               }
+                            } finally {
+                              loadingProvider.setLoading(false);
                             }
                           }
                         },
@@ -554,41 +579,37 @@ class _JobDetailsState extends State<JobDetails> {
                     ? () async {
                         final String? jobId = widget.job['id'] as String?;
                         if (jobId != null) {
+                          final loadingProvider = Provider.of<LoadingProvider>(this.context, listen: false);
+                          loadingProvider.setLoading(true);
                           try {
-                            final provider = Provider.of<CargoJobProvider>(
-                                this.context,
-                                listen: false); // Use this.context for provider
+                            final provider = Provider.of<CargoJobProvider>(this.context, listen: false);
                             await provider.removeJob(jobId);
 
-                            Navigator.of(dialogContext)
-                                .pop(); // Close the dialog
+                            Navigator.of(dialogContext).pop(); // Close the dialog
                             if (mounted) {
-                              Navigator.of(this.context).pop(
-                                  true); // Pop JobDetails screen, signal success (use this.context)
+                              Navigator.of(this.context).pop(true);
                               ScaffoldMessenger.of(this.context).showSnackBar(
-                                //use this.context
                                 const SnackBar(
                                     content: Text('Job deleted successfully'),
                                     backgroundColor: Colors.green),
                               );
                             }
                           } catch (e) {
-                            Navigator.of(dialogContext)
-                                .pop(); // Close the dialog
+                            Navigator.of(dialogContext).pop(); // Close the dialog
                             if (mounted) {
                               ScaffoldMessenger.of(this.context).showSnackBar(
-                                //use this.context
                                 SnackBar(
                                     content: Text('Error deleting job: $e'),
                                     backgroundColor: Colors.red),
                               );
                             }
+                          } finally {
+                             loadingProvider.setLoading(false);
                           }
                         } else {
                           Navigator.of(dialogContext).pop();
                           if (mounted) {
                             ScaffoldMessenger.of(this.context).showSnackBar(
-                              //use this.context
                               const SnackBar(
                                   content: Text('Error: Job ID not found.'),
                                   backgroundColor: Colors.red),
