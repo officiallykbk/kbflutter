@@ -163,6 +163,25 @@ class _DashboardState extends State<Dashboard> {
             return CustomScrollView(
               controller: _scrollController,
               slivers: [
+                // Offline Indicator (New)
+                if (jobProvider.isDataFromCache)
+                  SliverToBoxAdapter(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      color: Colors.orange.withOpacity(0.8),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.wifi_off, color: Colors.white, size: 16),
+                          SizedBox(width: 8),
+                          Text(
+                            "Offline Mode: Displaying cached data.",
+                            style: TextStyle(color: Colors.white, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 // 1. Revenue Overview (Chart)
                 SliverToBoxAdapter(
                   child: Padding(
