@@ -38,7 +38,7 @@ class CargoJobProvider extends ChangeNotifier {
       final response = await _supabase
           .from('cargo_jobs')
           .select()
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: true);
 
       List<Map<String, dynamic>> jobsData =
           (response as List).cast<Map<String, dynamic>>();
