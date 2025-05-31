@@ -12,6 +12,9 @@ import 'package:bizorganizer/providers/orders_providers.dart'; // Task 1.d: Impo
 import 'package:bizorganizer/models/cargo_job.dart'; // Task 1.d: Import CargoJob model
 import 'package:bizorganizer/widgets/revenue_trend_chart_widget.dart'; // Task 1.d: Import RevenueTrendChartWidget
 import 'package:bizorganizer/models/status_constants.dart'; // For payment status options
+import 'package:hive/hive.dart'; // For Hive box access
+import 'package:bizorganizer/models/offline_change.dart'; // For OfflineChange model
+import 'package:flutter/foundation.dart'; // For kIsWeb
 
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
@@ -145,39 +148,44 @@ class _DashboardState extends State<Dashboard> {
         backgroundColor: Theme.of(context).colorScheme.primary,
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          Consumer<CargoJobProvider>(
-            builder: (context, jobProvider, child) {
-              // Use the new isNetworkOffline flag
-              bool isOffline = jobProvider.isNetworkOffline;
-              // Secondary information: is data from cache?
-              bool dataIsFromCache = jobProvider.isDataFromCache;
-
-              if (isOffline) {
-                return IconButton(
-                  icon: Icon(Icons.radio_button_checked, color: Colors.redAccent),
-                  tooltip: dataIsFromCache
-                             ? 'Network Offline - Displaying Cached Data'
-                             : 'Network Offline - Could not load fresh data',
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(dataIsFromCache
-                                              ? 'Network is offline. Showing data from cache.'
-                                              : 'Network is offline. Failed to load fresh data and no cache available.'))
-                    );
-                  },
-                );
-              } else {
-                // Online
-                return IconButton(
-                  icon: Icon(Icons.radio_button_checked, color: Colors.greenAccent),
-                  tooltip: 'Online Mode - Data is Live',
-                  onPressed: () {
-                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Network is online. Data is live.'))
-                    );
-                  },
+          // Pending Changes Indicator
+          ValueListenableBuilder<Box<OfflineChange>>(
+            valueListenable: Hive.box<OfflineChange>('offlineChangesBox').listenable(),
+            builder: (context, box, _) {
+              if (box.isNotEmpty) {
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: Tooltip(
+                    message: '${box.length} pending changes to sync',
+                    child: Badge( // Using Material 3 Badge
+                      label: Text(box.length.toString()),
+                      child: Icon(Icons.sync_problem_outlined, color: Colors.orangeAccent),
+                    ),
+                  )
                 );
               }
+              return SizedBox.shrink();
+            },
+          ),
+          // Online/Offline Indicator
+          Consumer<CargoJobProvider>(
+            builder: (context, jobProvider, child) {
+              if (jobProvider.isNetworkOffline) {
+                return Tooltip(
+                  message: 'Network Offline',
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 12.0), // Adjusted padding
+                    child: Icon(Icons.cloud_off, color: Colors.red[300]),
+                  ),
+                );
+              }
+              return Tooltip(
+                message: 'Network Online',
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12.0), // Adjusted padding
+                  child: Icon(Icons.cloud_queue, color: Colors.green[300]),
+                ),
+              );
             },
           ),
         ],
@@ -278,31 +286,47 @@ class _DashboardState extends State<Dashboard> {
             return CustomScrollView(
               controller: _scrollController,
               slivers: [
-                // Updated Banner Logic
-                if (jobProvider.isNetworkOffline)
-                  SliverToBoxAdapter(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      color: Colors.amber.withOpacity(0.3), // Amber for more warning
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.wifi_off, color: Colors.orange, size: 16),
-                          SizedBox(width: 8),
-                          Text("Offline Mode: Displaying cached data.",
-                              style: TextStyle(color: Colors.orange)),
-                          Icon(Icons.wifi_off_sharp, color: Colors.amber.shade800, size: 18),
-                          const SizedBox(width: 10),
-                          Text(
-                            jobProvider.isDataFromCache && allJobs.isNotEmpty
-                                ? "Network Offline - Showing Cached Data"
-                                : "Network Offline - Attempting to Reconnect...",
-                            style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.w500),
+                // Sync Progress Indicator
+                Consumer<CargoJobProvider>(
+                  builder: (context, jobProvider, child) {
+                    if (jobProvider.isSyncing) {
+                      return SliverToBoxAdapter(
+                        child: LinearProgressIndicator(
+                          backgroundColor: Colors.amber.withOpacity(0.3),
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.amber),
+                          minHeight: 5, // Make it a bit more prominent
+                        ),
+                      );
+                    }
+                    return SliverToBoxAdapter(child: SizedBox.shrink());
+                  }
+                ),
+                // Enhanced Offline Banner Logic
+                Consumer<CargoJobProvider>(
+                  builder: (context, jobProvider, child) {
+                    if (jobProvider.isNetworkOffline) {
+                      return SliverToBoxAdapter(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          color: Colors.amber.withOpacity(0.9),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.wifi_off, color: Colors.black87, size: 18),
+                              SizedBox(width: 10),
+                              Text(
+                                "Offline: Displaying cached data. Changes will sync when online.",
+                                style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w500),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
+                        ),
+                      );
+                    }
+                    return SliverToBoxAdapter(child: SizedBox.shrink());
+                  }
+                ),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
