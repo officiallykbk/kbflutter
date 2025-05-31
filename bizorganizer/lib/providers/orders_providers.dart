@@ -1,4 +1,4 @@
-import 'dart:convert'; // For JSON encoding/decoding
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart'; // For local caching
 import 'package:bizorganizer/models/cargo_job.dart';
 import 'package:bizorganizer/models/job_history_entry.dart';

@@ -175,7 +175,7 @@ class SignInScreen extends StatelessWidget {
             ),
             Consumer<LoadingProvider>(
                 builder: (context, loadingModel, child) =>
-                    loading(loadState: loadingModel.isLoading))
+                    GlobalLoading(loadState: loadingModel.isLoading))
           ],
         ),
       ),

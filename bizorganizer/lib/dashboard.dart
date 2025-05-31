@@ -1,4 +1,5 @@
 import 'package:bizorganizer/main.dart';
+import 'package:bizorganizer/providers/loading_provider.dart';
 import 'package:bizorganizer/stats.dart';
 import 'package:flutter/rendering.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -147,7 +148,7 @@ class _DashboardState extends State<Dashboard> {
             bool streamHasUsableData = snapshot.hasData && snapshot.data!.isNotEmpty;
 
             if (snapshot.connectionState == ConnectionState.waiting && allJobs.isEmpty && !fromCache) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: GlobalLoading(loadState: true));
             }
 
             if (snapshot.hasError) {
