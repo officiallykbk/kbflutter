@@ -1,13 +1,21 @@
 import 'package:bizorganizer/models/cargo_job.dart';
 import 'package:bizorganizer/models/job_history_entry.dart';
 import 'package:bizorganizer/models/status_constants.dart';
+import 'package:bizorganizer/providers/loading_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:connectivity_plus/connectivity_plus.dart'; // Added connectivity_plus
+import 'package:bizorganizer/services/database_helper.dart'; // Added DatabaseHelper
 
 class CargoJobProvider extends ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
+  final LoadingProvider _loadingProvider;
+  final DatabaseHelper _dbHelper = DatabaseHelper.instance; // Initialize DatabaseHelper
+
+  CargoJobProvider(this._loadingProvider);
 
   String? _image;
+  bool isDataFromCache = false; // Added isDataFromCache field
   List<Map<String, dynamic>> _jobs = [];
   List<Map<String, dynamic>> _completedJobs = []; // Will filter for Delivered
   List<Map<String, dynamic>> _pendingJobs =
@@ -33,64 +41,91 @@ class CargoJobProvider extends ChangeNotifier {
   List<Map<String, dynamic>> get pendingPayments => _pendingPaymentJobs;
   List<Map<String, dynamic>> get overduePayments => _overduePaymentJobs;
 
-  Future<void> fetchJobsData() async {
-    try {
-      final response = await _supabase
-          .from('cargo_jobs')
-          .select()
-          .order('created_at', ascending: true);
+  // Future<void> fetchJobsData() async {
+  //   _loadingProvider.setLoading(true);
+  //   final connectivity = Connectivity();
+  //   try {
+  //     final connectivityResult = await connectivity.checkConnectivity();
+  //     List<Map<String, dynamic>> jobsDataToProcess = [];
 
-      List<Map<String, dynamic>> jobsData =
-          (response as List).cast<Map<String, dynamic>>();
-      _jobs = jobsData;
+  //     if (connectivityResult != ConnectivityResult.none) {
+  //       // Online: Fetch from Supabase and cache
+  //       print('Fetching jobs from Supabase (Online)');
+  //       final response = await _supabase
+  //           .from('cargo_jobs')
+  //           .select()
+  //           .order('created_at', ascending: false);
 
-      // Filter based on Delivery Status using new enum values
-      _completedJobs = jobsData
-          .where((job) =>
-              job['delivery_status']?.toString().toLowerCase() ==
-              deliveryStatusToString(DeliveryStatus.Delivered).toLowerCase())
-          .toList();
+  //       // Supabase response is List<dynamic>, needs casting.
+  //       // Each item in the list is already a Map<String, dynamic>.
+  //       final rawJobsData = List<Map<String, dynamic>>.from(response as List);
+        
+  //       // Convert to List<CargoJob> for saving
+  //       List<CargoJob> cargoJobs = rawJobsData.map((jobMap) => CargoJob.fromJson(jobMap)).toList();
+  //       await _dbHelper.batchInsertJobs(cargoJobs);
+  //       print('Jobs cached to local DB');
+        
+  //       jobsDataToProcess = rawJobsData; // Use raw data from Supabase for current session
+  //       isDataFromCache = false; // Set for online case
 
-      _pendingJobs = jobsData.where((job) {
-        final status = job['delivery_status']?.toString().toLowerCase();
-        return status ==
-            deliveryStatusToString(DeliveryStatus.Scheduled).toLowerCase();
-      }).toList();
+  //     } else {
+  //       // Offline: Load from local DB
+  //       print('Fetching jobs from local DB (Offline)');
+  //       List<CargoJob> cachedCargoJobs = await _dbHelper.getAllJobs();
+  //       isDataFromCache = true; // Set for offline case
+  //       // Convert List<CargoJob> to List<Map<String, dynamic>> for existing logic
+  //       // Ensure CargoJob.toJson() returns keys compatible with filtering logic (snake_case)
+  //       jobsDataToProcess = cachedCargoJobs.map((cargoJob) {
+  //         // Manually construct map to ensure all necessary fields for UI/filtering are present
+  //         // and keys are snake_case as expected by filtering logic.
+  //         return {
+  //           'id': cargoJob.id,
+  //           'shipper_name': cargoJob.shipperName,
+  //           'payment_status': cargoJob.paymentStatus,
+  //           'delivery_status': cargoJob.deliveryStatus,
+  //           'pickup_location': cargoJob.pickupLocation,
+  //           'dropoff_location': cargoJob.dropoffLocation,
+  //           'pickup_date': cargoJob.pickupDate?.toIso8601String(),
+  //           'estimated_delivery_date': cargoJob.estimatedDeliveryDate?.toIso8601String(),
+  //           'actual_delivery_date': cargoJob.actualDeliveryDate?.toIso8601String(),
+  //           'agreed_price': cargoJob.agreedPrice,
+  //           'notes': cargoJob.notes,
+  //           'created_by': cargoJob.createdBy,
+  //           'receipt_url': cargoJob.receiptUrl,
+  //           'created_at': cargoJob.createdAt?.toIso8601String(),
+  //           'updated_at': cargoJob.updatedAt?.toIso8601String(),
+  //         };
+  //       }).toList();
+  //       print('Loaded ${cachedCargoJobs.length} jobs from local DB');
+  //     }
 
-      _cancelledJobs = jobsData
-          .where((job) =>
-              job['delivery_status']?.toString().toLowerCase() ==
-              deliveryStatusToString(DeliveryStatus.Cancelled).toLowerCase())
-          .toList();
+  //     _jobs = jobsDataToProcess;
 
-      _delayedJobs = jobsData
-          .where((job) =>
-              job['delivery_status']?.toString().toLowerCase() ==
-              deliveryStatusToString(DeliveryStatus.Delayed).toLowerCase())
-          .toList();
+  //     // Filter based on Delivery Status
+  //     _completedJobs = _jobs.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Delivered).toLowerCase()).toList();
+  //     _pendingJobs = _jobs.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Scheduled).toLowerCase()).toList();
+  //     _cancelledJobs = _jobs.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Cancelled).toLowerCase()).toList();
+  //     _delayedJobs = _jobs.where((job) => job['delivery_status']?.toString().toLowerCase() == deliveryStatusToString(DeliveryStatus.Delayed).toLowerCase()).toList();
 
-      // Payment Status (remains unchanged by this task)
-      _paidJobs = jobsData
-          .where((job) =>
-              job['payment_status']?.toString().toLowerCase() ==
-              paymentStatusToString(PaymentStatus.Paid).toLowerCase())
-          .toList();
-      _pendingPaymentJobs = jobsData
-          .where((job) =>
-              job['payment_status']?.toString().toLowerCase() ==
-              paymentStatusToString(PaymentStatus.Pending).toLowerCase())
-          .toList();
+  //     // Filter based on Payment Status
+  //     _paidJobs = _jobs.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Paid).toLowerCase()).toList();
+  //     _pendingPaymentJobs = _jobs.where((job) => job['payment_status']?.toString().toLowerCase() == paymentStatusToString(PaymentStatus.Pending).toLowerCase()).toList();
+      
+  //     notifyListeners();
 
-      notifyListeners();
-    } catch (e) {
-      print('Error fetching jobs data: $e');
-    }
-  }
+  //   } catch (e) {
+  //     print('Error in fetchJobsData: $e');
+  //     // Consider how to inform UI about error, e.g., setting an error state.
+  //     // If offline and DB is empty, _jobs will be empty, UI should handle this.
+  //   } finally {
+  //     _loadingProvider.setLoading(false);
+  //   }
+  // }
 
   Future<void> addJob(CargoJob job) async {
     try {
       await _supabase.from('cargo_jobs').insert(job.toJson());
-      await fetchJobsData();
+      // await fetchJobsData();
     } catch (e) {
       print('Error adding job: $e');
     }
@@ -99,7 +134,7 @@ class CargoJobProvider extends ChangeNotifier {
   Future<void> removeJob(String jobId) async {
     try {
       await _supabase.from('cargo_jobs').delete().eq('id', jobId);
-      await fetchJobsData();
+      // await fetchJobsData();
       print('Job removed successfully');
     } catch (e) {
       print('Error removing job: $e');
@@ -115,7 +150,7 @@ class CargoJobProvider extends ChangeNotifier {
 
   //     Map<String, dynamic> updatePayload = updatedJobData.toJson();
 
-  //     // If delivery status is being set to Cancelled, also set payment status to Cancelled
+  //     // If delivery status is being set to Cancelled, also set payment status to Refunded
   //     if (updatedJobData.deliveryStatus ==
   //         deliveryStatusToString(DeliveryStatus.Cancelled)) {
   //       updatePayload['payment_status'] =
@@ -131,7 +166,7 @@ class CargoJobProvider extends ChangeNotifier {
   //       },
   //       'payment_status': {
   //         'old': currentJob.paymentStatus,
-  //         'new': updatePayload['payment_status']
+  //         'new': updatePayload['payment_status'] // Use the value from updatePayload
   //       },
   //       'delivery_status': {
   //         'old': currentJob.deliveryStatus,
@@ -225,7 +260,7 @@ class CargoJobProvider extends ChangeNotifier {
             updatePayload['payment_status'] as String, userId);
       }
 
-      await fetchJobsData();
+      // await fetchJobsData();
       print('Job delivery status updated successfully for job $jobId');
     } catch (e) {
       print('Error changing job delivery_status: $e');
@@ -247,7 +282,7 @@ class CargoJobProvider extends ChangeNotifier {
         await addJobHistoryRecord(
             jobId, 'payment_status', oldStatus, newStatus, userId);
       }
-      await fetchJobsData();
+      // await fetchJobsData();
       print('Job payment status updated successfully for job $jobId');
     } catch (e) {
       print('Error changing job payment_status: $e');
