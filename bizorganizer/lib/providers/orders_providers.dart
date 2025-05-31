@@ -1,6 +1,6 @@
 import 'dart:async'; // For Timer
 // import 'dart:convert'; // For JSON encoding/decoding - No longer needed for Hive with TypeAdapter
-// import 'package:shared_preferences/shared_preferences.dart'; // No longer needed
+import 'package:shared_preferences/shared_preferences.dart'; // For local caching
 import 'package:hive/hive.dart'; // Import Hive
 import 'package:bizorganizer/models/cargo_job.dart';
 import 'package:bizorganizer/models/job_history_entry.dart';
@@ -14,10 +14,13 @@ import 'package:bizorganizer/models/offline_change.dart'; // Import OfflineChang
 
 class CargoJobProvider extends ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
-  final Connectivity _connectivity = Connectivity(); // Add Connectivity instance
-  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription; // Add StreamSubscription
+  final Connectivity _connectivity =
+      Connectivity(); // Add Connectivity instance
+  StreamSubscription<ConnectivityResult>?
+      _connectivitySubscription; // Add StreamSubscription
   static const String _jobsCacheKey = 'cargoJobsBox'; // New Hive box name
-  static const String _offlineChangesBoxName = 'offlineChangesBox'; // Offline changes box
+  static const String _offlineChangesBoxName =
+      'offlineChangesBox'; // Offline changes box
   final Uuid _uuid = Uuid(); // Uuid instance
 
   Timer? _reconnectionTimer;
@@ -48,7 +51,8 @@ class CargoJobProvider extends ChangeNotifier {
   // Constructor
   CargoJobProvider() {
     _initializeConnectivityStatus();
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen((List<ConnectivityResult> result) {
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen((ConnectivityResult result) {
       _updateConnectionStatus(result);
     });
   }
@@ -109,7 +113,8 @@ class CargoJobProvider extends ChangeNotifier {
   Future<void> _saveJobsToCache(List<Map<String, dynamic>> jobsData) async {
     try {
       final box = Hive.box<CargoJob>(_jobsCacheKey);
-      final List<CargoJob> cargoJobsList = jobsData.map((json) => CargoJob.fromJson(json)).toList();
+      final List<CargoJob> cargoJobsList =
+          jobsData.map((json) => CargoJob.fromJson(json)).toList();
       await box.clear(); // Clear old data
       await box.addAll(cargoJobsList); // Add new data
       print('Job data saved to Hive cache.');
@@ -125,57 +130,45 @@ class CargoJobProvider extends ChangeNotifier {
       if (box.isNotEmpty) {
         final List<CargoJob> cargoJobsList = box.values.toList();
         // Convert List<CargoJob> to List<Map<String, dynamic>> for _processAndSetJobsData
-        final List<Map<String, dynamic>> jobsData = cargoJobsList.map((job) => job.toJson()).toList();
+        final List<Map<String, dynamic>> jobsData =
+            cargoJobsList.map((job) => job.toJson()).toList();
         _processAndSetJobsData(jobsData, fromCache: true);
         print('Job data loaded from Hive cache.');
         return true;
       } else {
         print('No job data found in Hive cache.');
         _isDataFromCache = true; // No data, but we tried cache
-        _processAndSetJobsData([], fromCache: true); // Ensure lists are empty and UI updates
+        _processAndSetJobsData([],
+            fromCache: true); // Ensure lists are empty and UI updates
         return false;
       }
     } catch (e) {
       print('Error loading jobs from Hive cache: $e');
       _isDataFromCache = true; // Error, but we tried cache
-      _processAndSetJobsData([], fromCache: true); // Ensure lists are empty and UI updates
+      _processAndSetJobsData([],
+          fromCache: true); // Ensure lists are empty and UI updates
       return false;
     }
   }
 
   Future<void> _initializeConnectivityStatus() async {
-    final List<ConnectivityResult> initialResult = await _connectivity.checkConnectivity();
-    _updateConnectionStatus(initialResult);
+    try {
+      final result = await _connectivity.checkConnectivity();
+      _updateConnectionStatus(result);
+    } catch (e) {
+      print('Error checking connectivity: $e');
+    }
   }
 
-  void _updateConnectionStatus(List<ConnectivityResult> result) async { // Made async
-    final bool wasOffline = _isNetworkOffline;
-    if (result.contains(ConnectivityResult.none)) {
-      if (!_isNetworkOffline) { // Only update and print if status actually changed
-        _isNetworkOffline = true;
-        print('Connectivity: Offline');
-        if (_reconnectionTimer == null || !_reconnectionTimer!.isActive) {
-           _startReconnectionTimer();
-        }
-        notifyListeners(); // Notify listeners about going offline
-      }
-    } else {
-      if (_isNetworkOffline || wasOffline) { // If status changed or was previously offline and is now confirmed online
-        _isNetworkOffline = false;
-        print('Connectivity: Online');
-        _cancelReconnectionTimer();
-        notifyListeners(); // Notify listeners about going online
-
-        print('Connectivity: Was offline or unsure, now confirmed online. Processing offline changes...');
-        await _processOfflineChanges(); // Process queue
-        // fetchJobsData will be called by _processOfflineChanges or if the queue was empty.
-        // If queue processing itself calls fetchJobsData, this explicit call might be redundant
-        // but ensures data is fetched if queue was empty.
-        if (Hive.box<OfflineChange>(_offlineChangesBoxName).isEmpty) { // Only fetch if queue was empty, otherwise _processOfflineChanges handles it
-            print('Connectivity: Offline queue is empty. Fetching data directly.');
-            await fetchJobsData();
-        }
-      }
+  void _updateConnectionStatus(ConnectivityResult result) {
+    bool isConnected = result != ConnectivityResult.none;
+    if (!isConnected && !_isNetworkOffline) {
+      _isNetworkOffline = true;
+      notifyListeners();
+    } else if (isConnected && _isNetworkOffline) {
+      _isNetworkOffline = false;
+      fetchJobsData(); // Try to fetch fresh data when back online
+      notifyListeners();
     }
   }
 
@@ -196,83 +189,103 @@ class CargoJobProvider extends ChangeNotifier {
       }
 
       final changes = List<OfflineChange>.from(box.values);
-    changes.sort((a, b) => a.timestamp.compareTo(b.timestamp)); // Process in order
+      changes.sort(
+          (a, b) => a.timestamp.compareTo(b.timestamp)); // Process in order
 
-    print('Processing ${changes.length} offline changes...');
+      print('Processing ${changes.length} offline changes...');
 
-    for (final change in changes) {
-      print('Processing change: ${change.id}, Operation: ${change.operation}, JobID: ${change.jobId}');
-      bool success = false;
-      try {
-        switch (change.operation) {
-          case ChangeOperation.create:
-            if (change.jobData == null) {
-              print('Error: Create operation for change ${change.id} has no jobData.');
-              continue; // Skip this change
-            }
-            final Map<String, dynamic> jobMap = jsonDecode(change.jobData!);
-            // Remove client-generated ID if it exists, Supabase will assign one
-            jobMap.remove('id');
-            final jobToCreate = CargoJob.fromJson(jobMap);
+      for (final change in changes) {
+        print(
+            'Processing change: ${change.id}, Operation: ${change.operation}, JobID: ${change.jobId}');
+        bool success = false;
+        try {
+          switch (change.operation) {
+            case ChangeOperation.create:
+              if (change.jobData == null) {
+                print(
+                    'Error: Create operation for change ${change.id} has no jobData.');
+                continue; // Skip this change
+              }
+              final Map<String, dynamic> jobMap = jsonDecode(change.jobData!);
+              // Remove client-generated ID if it exists, Supabase will assign one
+              jobMap.remove('id');
+              final jobToCreate = CargoJob.fromJson(jobMap);
 
-            // Using the online part of addJob's logic directly
-            final createData = jobToCreate.toJson();
-            // Remove id from createData as Supabase assigns it
-            createData.remove('id');
-            print('Attempting to create job (sync): ${jobToCreate.shipperName}');
-            final response = await _supabase.from('cargo_jobs').insert(createData).select();
-             if (response == null || (response is List && response.isEmpty)) {
-                print('Error creating job (sync) ${jobToCreate.shipperName}: Supabase returned no data.');
+              // Using the online part of addJob's logic directly
+              final createData = jobToCreate.toJson();
+              // Remove id from createData as Supabase assigns it
+              createData.remove('id');
+              print(
+                  'Attempting to create job (sync): ${jobToCreate.shipperName}');
+              final response = await _supabase
+                  .from('cargo_jobs')
+                  .insert(createData)
+                  .select();
+              if (response == null || (response is List && response.isEmpty)) {
+                print(
+                    'Error creating job (sync) ${jobToCreate.shipperName}: Supabase returned no data.');
                 // Keep in queue by not setting success = true
-             } else {
-                print('Successfully created job (sync): ${jobToCreate.shipperName}');
+              } else {
+                print(
+                    'Successfully created job (sync): ${jobToCreate.shipperName}');
                 success = true;
-             }
-            break;
-          case ChangeOperation.update:
-            if (change.jobId == null || change.jobData == null) {
-               print('Error: Update operation for change ${change.id} is missing jobId or jobData.');
-               continue;
-            }
-            final Map<String, dynamic> updateData = jsonDecode(change.jobData!);
-            // Ensure 'id' is not in the payload for an update, or handle as per Supabase requirements
-            updateData.remove('id');
-            // Use a generic update, assuming jobData contains all necessary fields for update
-            // This might need to be more specific if only partial updates are desired or if specific
-            // update methods (like updateJobDeliveryStatus) have extra logic (e.g., history).
-            // For simplicity, a direct update:
-            print('Attempting to update job (sync): ${change.jobId}');
-            await _supabase.from('cargo_jobs').update(updateData).eq('id', change.jobId!);
-            // Assume success for now, or add select() and check response
-            success = true;
-            print('Successfully updated job (sync): ${change.jobId}');
-            break;
-          case ChangeOperation.delete:
-            if (change.jobId == null) {
-              print('Error: Delete operation for change ${change.id} is missing jobId.');
-              continue;
-            }
-            print('Attempting to delete job (sync): ${change.jobId}');
-            await _supabase.from('cargo_jobs').delete().eq('id', change.jobId!);
-            // Assume success for now
-            success = true;
-            print('Successfully deleted job (sync): ${change.jobId}');
-            break;
-        }
+              }
+              break;
+            case ChangeOperation.update:
+              if (change.jobId == null || change.jobData == null) {
+                print(
+                    'Error: Update operation for change ${change.id} is missing jobId or jobData.');
+                continue;
+              }
+              final Map<String, dynamic> updateData =
+                  jsonDecode(change.jobData!);
+              // Ensure 'id' is not in the payload for an update, or handle as per Supabase requirements
+              updateData.remove('id');
+              // Use a generic update, assuming jobData contains all necessary fields for update
+              // This might need to be more specific if only partial updates are desired or if specific
+              // update methods (like updateJobDeliveryStatus) have extra logic (e.g., history).
+              // For simplicity, a direct update:
+              print('Attempting to update job (sync): ${change.jobId}');
+              await _supabase
+                  .from('cargo_jobs')
+                  .update(updateData)
+                  .eq('id', change.jobId!);
+              // Assume success for now, or add select() and check response
+              success = true;
+              print('Successfully updated job (sync): ${change.jobId}');
+              break;
+            case ChangeOperation.delete:
+              if (change.jobId == null) {
+                print(
+                    'Error: Delete operation for change ${change.id} is missing jobId.');
+                continue;
+              }
+              print('Attempting to delete job (sync): ${change.jobId}');
+              await _supabase
+                  .from('cargo_jobs')
+                  .delete()
+                  .eq('id', change.jobId!);
+              // Assume success for now
+              success = true;
+              print('Successfully deleted job (sync): ${change.jobId}');
+              break;
+          }
 
-        if (success) {
-          print('Change ${change.id} processed successfully. Removing from queue.');
-          await box.delete(change.id);
+          if (success) {
+            print(
+                'Change ${change.id} processed successfully. Removing from queue.');
+            await box.delete(change.id);
+          }
+        } catch (e) {
+          print(
+              'Error processing change ${change.id} (Operation: ${change.operation}): $e. Leaving in queue.');
+          // Optionally, implement retry limits or specific error handling here
         }
-      } catch (e) {
-        print('Error processing change ${change.id} (Operation: ${change.operation}): $e. Leaving in queue.');
-        // Optionally, implement retry limits or specific error handling here
       }
-    }
 
-    print('Finished processing offline changes.');
-    // Always refresh data from server after processing queue to ensure consistency
-    await fetchJobsData();
+      print('Finished processing offline changes.');
+      // Always refresh data from server after processing queue to ensure consistency
+      await fetchJobsData();
     } finally {
       _isSyncing = false;
       notifyListeners();
@@ -283,10 +296,12 @@ class CargoJobProvider extends ChangeNotifier {
   Future<void> fetchJobsData() async {
     // If connectivity_plus says we are offline, try loading from cache first.
     if (_isNetworkOffline) {
-      print('fetchJobsData: Network is reported offline by connectivity_plus. Attempting cache load.');
+      print(
+          'fetchJobsData: Network is reported offline by connectivity_plus. Attempting cache load.');
       bool loadedFromCache = await loadJobsFromCache();
       if (loadedFromCache) {
-        print('fetchJobsData: Successfully loaded data from cache while offline.');
+        print(
+            'fetchJobsData: Successfully loaded data from cache while offline.');
       } else {
         print('fetchJobsData: Failed to load data from cache while offline.');
         // Optionally, still set _isDataFromCache to true and ensure UI reflects no data.
@@ -304,12 +319,13 @@ class CargoJobProvider extends ChangeNotifier {
           .order('created_at', ascending: false);
 
       // Supabase call succeeded
-      List<Map<String, dynamic>> jobsData = (response as List).cast<Map<String, dynamic>>();
+      List<Map<String, dynamic>> jobsData =
+          (response as List).cast<Map<String, dynamic>>();
       _processAndSetJobsData(jobsData, fromCache: false);
       await _saveJobsToCache(jobsData);
       // If Supabase call was successful, any reconnection timer due to previous Supabase errors can be cancelled.
       // _cancelReconnectionTimer(); // This might be redundant if connectivity status itself handles it.
-                                 // However, keeping it ensures that if Supabase was the issue, not network, we stop retrying.
+      // However, keeping it ensures that if Supabase was the issue, not network, we stop retrying.
     } catch (e) {
       print('Error fetching jobs data from Supabase: $e');
       // Even if connectivity_plus says online, Supabase might be unreachable.
@@ -318,7 +334,8 @@ class CargoJobProvider extends ChangeNotifier {
       // _isNetworkOffline remains false as per connectivity_plus
       _startReconnectionTimer(); // Keep retrying Supabase if it fails.
 
-      print('Attempting to load from cache as fallback due to Supabase error...');
+      print(
+          'Attempting to load from cache as fallback due to Supabase error...');
       bool loadedFromCache = await loadJobsFromCache();
       if (loadedFromCache) {
         print('Successfully loaded data from cache after Supabase error.');
@@ -330,7 +347,8 @@ class CargoJobProvider extends ChangeNotifier {
 
   void _startReconnectionTimer() {
     _reconnectionTimer?.cancel();
-    _reconnectionTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
+    _reconnectionTimer =
+        Timer.periodic(const Duration(seconds: 30), (timer) async {
       // This timer now primarily retries fetching data if Supabase was unreachable,
       // or if connectivity was lost and then regained (handled by _updateConnectionStatus calling fetchJobsData).
       // If _isNetworkOffline is true, fetchJobsData will rely on cache.
@@ -351,30 +369,25 @@ class CargoJobProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    _connectivitySubscription?.cancel(); // Cancel connectivity subscription
+    _connectivitySubscription?.cancel();
     _cancelReconnectionTimer();
     super.dispose();
   }
 
-  Future<void> _addChangeToQueue(ChangeOperation operation, {String? jobId, CargoJob? job}) async {
-    final String changeId = _uuid.v4(); // Generate ID for the change itself
-    Map<String, dynamic>? jobDataMap = job?.toJson();
-
-    // For create operations, if the job has a client-generated ID, store it with the change.
-    // This client-generated ID will be part of jobDataMap.
-    // It will be stripped before sending to Supabase during _processOfflineChanges.
-    // The main _jobs list will be reconciled by fetchJobsData after queue processing.
-
+  Future<void> _addToOfflineQueue(ChangeOperation operation,
+      {String? jobId, Map<String, dynamic>? jobDataMap, CargoJob? job}) async {
+    final changeId = DateTime.now().millisecondsSinceEpoch.toString();
     final change = OfflineChange(
       id: changeId,
       operation: operation,
-      jobId: jobId ?? job?.id, // For update/delete, this is the permanent ID. For create, it might be client-generated.
+      jobId: jobId ?? job?.id,
       jobData: jobDataMap != null ? jsonEncode(jobDataMap) : null,
       timestamp: DateTime.now(),
     );
     final box = Hive.box<OfflineChange>(_offlineChangesBoxName);
-    await box.put(change.id, change); // Use the change's own ID as the key
-    print('Added change to queue: ${change.id} - Op: ${change.operation}, JobID: ${change.jobId}');
+    await box.put(changeId, change);
+    print(
+        'Added change to queue: $changeId - Op: ${operation.toString()}, JobID: ${jobId ?? job?.id}');
   }
 
   Future<void> addJob(CargoJob job) async {
@@ -386,10 +399,10 @@ class CargoJobProvider extends ChangeNotifier {
       // This temporary ID will be included in the jobData of the OfflineChange.
       final String tempJobIdForOptimisticCreate = job.id ?? _uuid.v4();
       final jobForOptimisticAdd = (job.id == null)
-        ? CargoJob(
-            id: tempJobIdForOptimisticCreate, // Use temp ID
-            shipperName: job.shipperName,
-            paymentStatus: job.paymentStatus,
+          ? CargoJob(
+              id: tempJobIdForOptimisticCreate, // Use temp ID
+              shipperName: job.shipperName,
+              paymentStatus: job.paymentStatus,
               deliveryStatus: job.deliveryStatus,
               pickupLocation: job.pickupLocation,
               dropoffLocation: job.dropoffLocation,
@@ -398,16 +411,16 @@ class CargoJobProvider extends ChangeNotifier {
               actualDeliveryDate: job.actualDeliveryDate,
               agreedPrice: job.agreedPrice,
               notes: job.notes,
-            createdBy: job.createdBy,
-            receiptUrl: job.receiptUrl,
-            createdAt: job.createdAt ?? DateTime.now(),
-            updatedAt: DateTime.now(),
-          )
-        : job;
+              createdBy: job.createdBy,
+              receiptUrl: job.receiptUrl,
+              createdAt: job.createdAt ?? DateTime.now(),
+              updatedAt: DateTime.now(),
+            )
+          : job;
 
-
-      // The job object passed to _addChangeToQueue will contain the tempJobIdForOptimisticCreate if job.id was null.
-      await _addChangeToQueue(ChangeOperation.create, job: jobForOptimisticAdd);
+      // The job object passed to _addToOfflineQueue will contain the tempJobIdForOptimisticCreate if job.id was null.
+      await _addToOfflineQueue(ChangeOperation.create,
+          job: jobForOptimisticAdd);
 
       // Optimistic Update using jobForOptimisticAdd (which has the temp ID if original was null)
       _jobs.insert(0, jobForOptimisticAdd.toJson());
@@ -421,9 +434,11 @@ class CargoJobProvider extends ChangeNotifier {
     final jobData = job.toJson();
     print('Attempting to add job (online). Payload: $jobData');
     try {
-      final response = await _supabase.from('cargo_jobs').insert(jobData).select();
+      final response =
+          await _supabase.from('cargo_jobs').insert(jobData).select();
       if (response == null || (response is List && response.isEmpty)) {
-        throw Exception('Failed to add job: Supabase returned no data. Check RLS or constraints.');
+        throw Exception(
+            'Failed to add job: Supabase returned no data. Check RLS or constraints.');
       }
       await fetchJobsData(); // Refresh local cache from Supabase
       print('Job added successfully online and data refreshed.');
@@ -439,7 +454,7 @@ class CargoJobProvider extends ChangeNotifier {
   Future<void> removeJob(String jobId) async {
     if (_isNetworkOffline) {
       print('Network offline. Queueing job deletion: $jobId');
-      await _addChangeToQueue(ChangeOperation.delete, jobId: jobId);
+      await _addToOfflineQueue(ChangeOperation.delete, jobId: jobId);
 
       // Optimistic Update
       _jobs.removeWhere((j) => j['id'] == jobId);
@@ -538,9 +553,11 @@ class CargoJobProvider extends ChangeNotifier {
   //   }
   // }
 
-  Future<void> updateJobDeliveryStatus(String jobId, String newDeliveryStatus) async {
+  Future<void> updateJobDeliveryStatus(
+      String jobId, String newDeliveryStatus) async {
     if (_isNetworkOffline) {
-      print('Network offline. Queueing delivery status update for job $jobId to $newDeliveryStatus');
+      print(
+          'Network offline. Queueing delivery status update for job $jobId to $newDeliveryStatus');
       final jobIndex = _jobs.indexWhere((j) => j['id'] == jobId);
       if (jobIndex == -1) {
         print('Job not found locally for offline update: $jobId');
@@ -551,15 +568,20 @@ class CargoJobProvider extends ChangeNotifier {
       CargoJob updatedJobForQueue = CargoJob(
         id: jobToUpdate.id,
         shipperName: jobToUpdate.shipperName,
-        paymentStatus: (newDeliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled) && jobToUpdate.paymentStatus != paymentStatusToString(PaymentStatus.Refunded))
+        paymentStatus: (newDeliveryStatus ==
+                    deliveryStatusToString(DeliveryStatus.Cancelled) &&
+                jobToUpdate.paymentStatus !=
+                    paymentStatusToString(PaymentStatus.Refunded))
             ? paymentStatusToString(PaymentStatus.Refunded)
-            : jobToUpdate.paymentStatus, // Potentially update payment status if delivery is cancelled
+            : jobToUpdate
+                .paymentStatus, // Potentially update payment status if delivery is cancelled
         deliveryStatus: newDeliveryStatus, // Apply the new delivery status
         pickupLocation: jobToUpdate.pickupLocation,
         dropoffLocation: jobToUpdate.dropoffLocation,
         pickupDate: jobToUpdate.pickupDate,
         estimatedDeliveryDate: jobToUpdate.estimatedDeliveryDate,
-        actualDeliveryDate: jobToUpdate.actualDeliveryDate, // This might also need updating if newDeliveryStatus is 'Delivered'
+        actualDeliveryDate: jobToUpdate
+            .actualDeliveryDate, // This might also need updating if newDeliveryStatus is 'Delivered'
         agreedPrice: jobToUpdate.agreedPrice,
         notes: jobToUpdate.notes,
         createdBy: jobToUpdate.createdBy,
@@ -568,7 +590,8 @@ class CargoJobProvider extends ChangeNotifier {
         updatedAt: DateTime.now(), // Update timestamp
       );
 
-      await _addChangeToQueue(ChangeOperation.update, jobId: jobId, job: updatedJobForQueue);
+      await _addToOfflineQueue(ChangeOperation.update,
+          jobId: jobId, jobDataMap: updatedJobForQueue.toJson());
 
       // Optimistic Update
       _jobs[jobIndex] = updatedJobForQueue.toJson();
@@ -580,15 +603,27 @@ class CargoJobProvider extends ChangeNotifier {
 
     // Online: Proceed with Supabase call
     try {
-      final currentJobData = await _supabase.from('cargo_jobs').select('delivery_status, payment_status').eq('id', jobId).single();
-      final oldDeliveryStatus = currentJobData['delivery_status'] as String? ?? deliveryStatusToString(DeliveryStatus.Scheduled);
-      final String currentPaymentStatus = currentJobData['payment_status'] as String? ?? paymentStatusToString(PaymentStatus.Pending);
+      final currentJobData = await _supabase
+          .from('cargo_jobs')
+          .select('delivery_status, payment_status')
+          .eq('id', jobId)
+          .single();
+      final oldDeliveryStatus = currentJobData['delivery_status'] as String? ??
+          deliveryStatusToString(DeliveryStatus.Scheduled);
+      final String currentPaymentStatus =
+          currentJobData['payment_status'] as String? ??
+              paymentStatusToString(PaymentStatus.Pending);
       final userId = _supabase.auth.currentUser?.id ?? 'system_status_change';
-      Map<String, dynamic> updatePayload = {'delivery_status': newDeliveryStatus};
+      Map<String, dynamic> updatePayload = {
+        'delivery_status': newDeliveryStatus
+      };
 
-      if (newDeliveryStatus == deliveryStatusToString(DeliveryStatus.Cancelled)) {
-        if (currentPaymentStatus != paymentStatusToString(PaymentStatus.Refunded)) {
-          updatePayload['payment_status'] = paymentStatusToString(PaymentStatus.Refunded);
+      if (newDeliveryStatus ==
+          deliveryStatusToString(DeliveryStatus.Cancelled)) {
+        if (currentPaymentStatus !=
+            paymentStatusToString(PaymentStatus.Refunded)) {
+          updatePayload['payment_status'] =
+              paymentStatusToString(PaymentStatus.Refunded);
         }
       }
       // Potentially handle actualDeliveryDate if newDeliveryStatus is 'Delivered'
@@ -596,13 +631,15 @@ class CargoJobProvider extends ChangeNotifier {
       //   updatePayload['actual_delivery_date'] = DateTime.now().toIso8601String();
       // }
 
-
       await _supabase.from('cargo_jobs').update(updatePayload).eq('id', jobId);
       if (oldDeliveryStatus != newDeliveryStatus) {
-        await addJobHistoryRecord(jobId, 'delivery_status', oldDeliveryStatus, newDeliveryStatus, userId);
+        await addJobHistoryRecord(jobId, 'delivery_status', oldDeliveryStatus,
+            newDeliveryStatus, userId);
       }
-      if (updatePayload.containsKey('payment_status') && currentPaymentStatus != updatePayload['payment_status']) {
-        await addJobHistoryRecord(jobId, 'payment_status', currentPaymentStatus, updatePayload['payment_status'] as String, userId);
+      if (updatePayload.containsKey('payment_status') &&
+          currentPaymentStatus != updatePayload['payment_status']) {
+        await addJobHistoryRecord(jobId, 'payment_status', currentPaymentStatus,
+            updatePayload['payment_status'] as String, userId);
       }
       await fetchJobsData();
       print('Job delivery status updated successfully online for job $jobId');
@@ -614,14 +651,16 @@ class CargoJobProvider extends ChangeNotifier {
 
   Future<void> updateJobPaymentStatus(String jobId, String newStatus) async {
     if (_isNetworkOffline) {
-      print('Network offline. Queueing payment status update for job $jobId to $newStatus');
+      print(
+          'Network offline. Queueing payment status update for job $jobId to $newStatus');
       final jobIndex = _jobs.indexWhere((j) => j['id'] == jobId);
       if (jobIndex == -1) {
         print('Job not found locally for offline update: $jobId');
         return;
       }
       CargoJob jobToUpdate = CargoJob.fromJson(_jobs[jobIndex]);
-      CargoJob updatedJobForQueue = CargoJob( // Create a new instance for the queue
+      CargoJob updatedJobForQueue = CargoJob(
+        // Create a new instance for the queue
         id: jobToUpdate.id,
         shipperName: jobToUpdate.shipperName,
         paymentStatus: newStatus, // Apply the new payment status
@@ -638,7 +677,8 @@ class CargoJobProvider extends ChangeNotifier {
         createdAt: jobToUpdate.createdAt,
         updatedAt: DateTime.now(), // Update timestamp
       );
-      await _addChangeToQueue(ChangeOperation.update, jobId: jobId, job: updatedJobForQueue);
+      await _addToOfflineQueue(ChangeOperation.update,
+          jobId: jobId, jobDataMap: updatedJobForQueue.toJson());
 
       // Optimistic Update
       _jobs[jobIndex] = updatedJobForQueue.toJson();
@@ -650,12 +690,16 @@ class CargoJobProvider extends ChangeNotifier {
 
     // Online: Proceed with Supabase call
     try {
-      final currentJobData = await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
+      final currentJobData =
+          await _supabase.from('cargo_jobs').select().eq('id', jobId).single();
       final oldStatus = currentJobData['payment_status'] as String;
       final userId = _supabase.auth.currentUser?.id ?? 'system_status_change';
-      await _supabase.from('cargo_jobs').update({'payment_status': newStatus}).eq('id', jobId);
+      await _supabase
+          .from('cargo_jobs')
+          .update({'payment_status': newStatus}).eq('id', jobId);
       if (oldStatus != newStatus) {
-        await addJobHistoryRecord(jobId, 'payment_status', oldStatus, newStatus, userId);
+        await addJobHistoryRecord(
+            jobId, 'payment_status', oldStatus, newStatus, userId);
       }
       await fetchJobsData();
       print('Job payment status updated successfully online for job $jobId');

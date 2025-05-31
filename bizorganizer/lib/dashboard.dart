@@ -13,6 +13,7 @@ import 'package:bizorganizer/models/cargo_job.dart'; // Task 1.d: Import CargoJo
 import 'package:bizorganizer/widgets/revenue_trend_chart_widget.dart'; // Task 1.d: Import RevenueTrendChartWidget
 import 'package:bizorganizer/models/status_constants.dart'; // For payment status options
 import 'package:hive/hive.dart'; // For Hive box access
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:bizorganizer/models/offline_change.dart'; // For OfflineChange model
 import 'package:flutter/foundation.dart'; // For kIsWeb
 
@@ -26,6 +27,7 @@ class Dashboard extends StatefulWidget {
 class _DashboardState extends State<Dashboard> {
   final ScrollController _scrollController = ScrollController();
   bool _isFabVisible = true;
+  late ValueListenable<Box<OfflineChange>> _offlineChangesListenable;
 
   int _totalJobsCount = 0;
   int _pendingJobsCount = 0;
@@ -49,6 +51,10 @@ class _DashboardState extends State<Dashboard> {
     super.initState();
     _scrollController.addListener(_scrollListener);
     _jobsStream = _getJobsStream(supabase);
+
+    // Initialize the offline changes box and make it listenable
+    final box = Hive.box<OfflineChange>('offlineChangesBox');
+    _offlineChangesListenable = box.listenable();
 
     // Ensure data is fetched when the dashboard is initialized
     // The provider will handle fallback to cache if Supabase fetch fails.
@@ -150,21 +156,21 @@ class _DashboardState extends State<Dashboard> {
         actions: [
           // Pending Changes Indicator
           ValueListenableBuilder<Box<OfflineChange>>(
-            valueListenable: Hive.box<OfflineChange>('offlineChangesBox').listenable(),
+            valueListenable: _offlineChangesListenable,
             builder: (context, box, _) {
               if (box.isNotEmpty) {
                 return Padding(
-                  padding: const EdgeInsets.only(right: 8.0),
-                  child: Tooltip(
-                    message: '${box.length} pending changes to sync',
-                    child: Badge( // Using Material 3 Badge
-                      label: Text(box.length.toString()),
-                      child: Icon(Icons.sync_problem_outlined, color: Colors.orangeAccent),
-                    ),
-                  )
-                );
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: Tooltip(
+                      message: '${box.length} pending changes to sync',
+                      child: Badge(
+                        label: Text(box.length.toString()),
+                        child: const Icon(Icons.sync_problem_outlined,
+                            color: Colors.orangeAccent),
+                      ),
+                    ));
               }
-              return SizedBox.shrink();
+              return const SizedBox.shrink();
             },
           ),
           // Online/Offline Indicator
@@ -174,7 +180,8 @@ class _DashboardState extends State<Dashboard> {
                 return Tooltip(
                   message: 'Network Offline',
                   child: Padding(
-                    padding: const EdgeInsets.only(right: 12.0), // Adjusted padding
+                    padding:
+                        const EdgeInsets.only(right: 12.0), // Adjusted padding
                     child: Icon(Icons.cloud_off, color: Colors.red[300]),
                   ),
                 );
@@ -182,7 +189,8 @@ class _DashboardState extends State<Dashboard> {
               return Tooltip(
                 message: 'Network Online',
                 child: Padding(
-                  padding: const EdgeInsets.only(right: 12.0), // Adjusted padding
+                  padding:
+                      const EdgeInsets.only(right: 12.0), // Adjusted padding
                   child: Icon(Icons.cloud_queue, color: Colors.green[300]),
                 ),
               );
@@ -229,11 +237,14 @@ class _DashboardState extends State<Dashboard> {
             }
 
             if (displayJobs.isEmpty) {
-              String emptyStateMessage = 'No jobs found.'; // Default if online and no jobs
+              String emptyStateMessage =
+                  'No jobs found.'; // Default if online and no jobs
               if (jobProvider.isNetworkOffline) {
-                if (jobProvider.isDataFromCache) { // Tried cache, but it was empty or failed
+                if (jobProvider.isDataFromCache) {
+                  // Tried cache, but it was empty or failed
                   emptyStateMessage = 'Network Offline - No cached data found.';
-                } else { // Network offline, and didn't even rely on cache (e.g. cache disabled or first attempt failed)
+                } else {
+                  // Network offline, and didn't even rely on cache (e.g. cache disabled or first attempt failed)
                   emptyStateMessage = 'Network Offline - Could not fetch data.';
                 }
                 // Special empty state UI for offline
@@ -244,9 +255,12 @@ class _DashboardState extends State<Dashboard> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+                        const Icon(Icons.wifi_off_rounded,
+                            size: 48, color: Colors.grey),
                         const SizedBox(height: 16),
-                        Text(emptyStateMessage, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
+                        Text(emptyStateMessage,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.grey)),
                       ],
                     ),
                   ),
@@ -288,45 +302,47 @@ class _DashboardState extends State<Dashboard> {
               slivers: [
                 // Sync Progress Indicator
                 Consumer<CargoJobProvider>(
-                  builder: (context, jobProvider, child) {
-                    if (jobProvider.isSyncing) {
-                      return SliverToBoxAdapter(
-                        child: LinearProgressIndicator(
-                          backgroundColor: Colors.amber.withOpacity(0.3),
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.amber),
-                          minHeight: 5, // Make it a bit more prominent
-                        ),
-                      );
-                    }
-                    return SliverToBoxAdapter(child: SizedBox.shrink());
+                    builder: (context, jobProvider, child) {
+                  if (jobProvider.isSyncing) {
+                    return SliverToBoxAdapter(
+                      child: LinearProgressIndicator(
+                        backgroundColor: Colors.amber.withOpacity(0.3),
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.amber),
+                        minHeight: 5, // Make it a bit more prominent
+                      ),
+                    );
                   }
-                ),
+                  return SliverToBoxAdapter(child: SizedBox.shrink());
+                }),
                 // Enhanced Offline Banner Logic
                 Consumer<CargoJobProvider>(
-                  builder: (context, jobProvider, child) {
-                    if (jobProvider.isNetworkOffline) {
-                      return SliverToBoxAdapter(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          color: Colors.amber.withOpacity(0.9),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.wifi_off, color: Colors.black87, size: 18),
-                              SizedBox(width: 10),
-                              Text(
-                                "Offline: Displaying cached data. Changes will sync when online.",
-                                style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w500),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
+                    builder: (context, jobProvider, child) {
+                  if (jobProvider.isNetworkOffline) {
+                    return SliverToBoxAdapter(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        color: Colors.amber.withOpacity(0.9),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.wifi_off,
+                                color: Colors.black87, size: 18),
+                            SizedBox(width: 10),
+                            Text(
+                              "Offline: Displaying cached data. Changes will sync when online.",
+                              style: TextStyle(
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w500),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
                         ),
-                      );
-                    }
-                    return SliverToBoxAdapter(child: SizedBox.shrink());
+                      ),
+                    );
                   }
-                ),
+                  return SliverToBoxAdapter(child: SizedBox.shrink());
+                }),
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),

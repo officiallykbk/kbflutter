@@ -1,6 +1,8 @@
 import 'dart:convert'; // For jsonEncode and jsonDecode
 import 'package:hive/hive.dart';
 
+part 'offline_change.g.dart';
+
 enum ChangeOperation {
   create,
   update,
@@ -23,22 +25,34 @@ class ChangeOperationAdapter extends TypeAdapter<ChangeOperation> {
   }
 }
 
-@HiveType(typeId: 1) // Conceptually, actual registration is manual
+@HiveType(typeId: 1)
 class OfflineChange extends HiveObject {
   @HiveField(0)
-  String id; // Unique ID for the change itself
+  final String id;
 
   @HiveField(1)
-  ChangeOperation operation;
+  final ChangeOperation operation;
 
   @HiveField(2)
-  String? jobId; // ID of the CargoJob being affected
+  final String? jobId;
 
   @HiveField(3)
-  String? jobData; // CargoJob data as a JSON string for create/update
+  final String? jobData;
 
   @HiveField(4)
-  DateTime timestamp;
+  final DateTime timestamp;
+
+  @HiveField(5)
+  final String? fieldChanged;
+
+  @HiveField(6)
+  final String? oldValue;
+
+  @HiveField(7)
+  final String? newValue;
+
+  @HiveField(8)
+  final String? changedBy;
 
   OfflineChange({
     required this.id,
@@ -46,46 +60,28 @@ class OfflineChange extends HiveObject {
     this.jobId,
     this.jobData,
     required this.timestamp,
+    this.fieldChanged,
+    this.oldValue,
+    this.newValue,
+    this.changedBy,
   });
 
   Map<String, dynamic>? get jobDataAsMap {
     if (jobData == null) return null;
     return jsonDecode(jobData!) as Map<String, dynamic>;
   }
-}
 
-class OfflineChangeAdapter extends TypeAdapter<OfflineChange> {
-  @override
-  final int typeId = 1; // Matches the conceptual @HiveType typeId
-
-  @override
-  OfflineChange read(BinaryReader reader) {
-    final numOfFields = reader.readByte();
-    final fields = <int, dynamic>{
-      for (int i = 0; i < numOfFields; i++) reader.readByte(): reader.read(),
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'operation': operation.toString(),
+      'job_id': jobId,
+      'job_data': jobData,
+      'timestamp': timestamp.toIso8601String(),
+      'field_changed': fieldChanged,
+      'old_value': oldValue,
+      'new_value': newValue,
+      'changed_by': changedBy,
     };
-    return OfflineChange(
-      id: fields[0] as String,
-      operation: fields[1] as ChangeOperation, // Assumes ChangeOperationAdapter is registered
-      jobId: fields[2] as String?,
-      jobData: fields[3] as String?, // Stored as JSON string
-      timestamp: fields[4] as DateTime,
-    );
-  }
-
-  @override
-  void write(BinaryWriter writer, OfflineChange obj) {
-    writer
-      ..writeByte(5) // Number of fields
-      ..writeByte(0)
-      ..write(obj.id)
-      ..writeByte(1)
-      ..write(obj.operation) // Assumes ChangeOperationAdapter is registered
-      ..writeByte(2)
-      ..write(obj.jobId)
-      ..writeByte(3)
-      ..write(obj.jobData) // jobData is already a JSON string via constructor or setter
-      ..writeByte(4)
-      ..write(obj.timestamp);
   }
 }
