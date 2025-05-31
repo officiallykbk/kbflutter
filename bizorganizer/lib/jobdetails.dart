@@ -1,4 +1,4 @@
-import 'package:bizorganizer/models/imageCaching.dart';
+import 'package:bizorganizer/models/reusables.dart';
 import 'package:bizorganizer/providers/orders_providers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -96,9 +96,7 @@ class _JobDetailsState extends State<JobDetails> {
         setState(() {
           _isLoadingHistory = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error fetching job history: $e')),
-        );
+        CustomSnackBar.show(context, 'Error fetching job history: $e', 'error');
       }
     }
   }
@@ -205,7 +203,7 @@ class _JobDetailsState extends State<JobDetails> {
                                       imageUrl: cargoJobInstance.receiptUrl!))),
                           child: Hero(
                               tag: cargoJobInstance.receiptUrl!,
-                              child: CacheImage(
+                              child: CachedNetworkImage(
                                   imageUrl: cargoJobInstance.receiptUrl!)))
                     ],
                   ),
@@ -306,22 +304,11 @@ class _JobDetailsState extends State<JobDetails> {
                                     statusStr.toLowerCase();
                               });
                               _fetchHistory(); // Added history refresh
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text(
-                                        'Delivery status updated to ${statusStr.toUpperCase()}'),
-                                    backgroundColor: Colors.green),
-                              );
+                              CustomSnackBar.show(context, 'Delivery status updated to ${statusStr.toUpperCase()}', 'success');
                             }
                           } catch (e) {
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                      'Error updating delivery status: $e'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
+                              CustomSnackBar.show(context, 'Error updating delivery status: $e', 'error');
                               setState(() {
                                 currentActualDeliveryStatus =
                                     prevDelivStatus.toLowerCase();
@@ -379,21 +366,10 @@ class _JobDetailsState extends State<JobDetails> {
                                   cargoJobInstance.id!.toString(),
                                   statusStr); // Fixed ID type
                               _fetchHistory(); // Added history refresh
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text(
-                                        'Payment status updated to ${statusStr.toUpperCase()}'),
-                                    backgroundColor: Colors.green),
-                              );
+                              CustomSnackBar.show(context, 'Payment status updated to ${statusStr.toUpperCase()}', 'success');
                             } catch (e) {
                               if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                        'Error updating payment status: $e'),
-                                    backgroundColor: Colors.red,
-                                  ),
-                                );
+                                CustomSnackBar.show(context, 'Error updating payment status: $e', 'error');
                                 currentActualPaymentStatus = prevPayStatus;
                               }
                             }
@@ -555,30 +531,18 @@ class _JobDetailsState extends State<JobDetails> {
                               Navigator.of(dialogContext).pop(); // Close the dialog
                               if (mounted) { // Check mount status of _JobDetailsState
                                 Navigator.of(this.context).pop(true); // Pop JobDetails screen
-                                ScaffoldMessenger.of(this.context).showSnackBar(
-                                  const SnackBar(
-                                      content: Text('Job deleted successfully'),
-                                      backgroundColor: Colors.green),
-                                );
+                                CustomSnackBar.show(context, 'Job deleted successfully', 'success');
                               }
                             } catch (e) {
                               Navigator.of(dialogContext).pop(); // Close the dialog
                                if (mounted) { // Check mount status of _JobDetailsState
-                                ScaffoldMessenger.of(this.context).showSnackBar(
-                                  SnackBar(
-                                      content: Text('Error deleting job: $e'),
-                                      backgroundColor: Colors.red),
-                                );
+                                CustomSnackBar.show(context, 'Error deleting job: $e', 'error');
                               }
                             }
                           } else {
                             Navigator.of(dialogContext).pop(); // Close the dialog
                             if (mounted) { // Check mount status of _JobDetailsState
-                              ScaffoldMessenger.of(this.context).showSnackBar(
-                                const SnackBar(
-                                    content: Text('Error: Job ID not found.'),
-                                    backgroundColor: Colors.red),
-                              );
+                              CustomSnackBar.show(context, 'Error: Job ID not found.', 'error');
                             }
                           }
                         }

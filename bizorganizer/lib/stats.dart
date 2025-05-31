@@ -1,3 +1,4 @@
+import 'package:bizorganizer/models/reusables.dart';
 import 'package:bizorganizer/providers/orders_providers.dart'; 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -607,9 +608,7 @@ class _JobStatsPageState extends State<JobStatsPage> {
   void _exportData() {
     if (!mounted) return;
     print("Exporting data for date range: $dateRangeText, payment status: $selectedPaymentStatusFilter");
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Export functionality not yet implemented.')),
-    );
+   CustomSnackBar.show(context, 'Export functionality not yet implemented.', 'error');
   }
 }
 
