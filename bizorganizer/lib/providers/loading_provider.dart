@@ -11,9 +11,9 @@ class GlobalLoadingIndicator extends StatelessWidget {
     return loadState
         ? Container(
             color: Colors.black.withOpacity(0), // Semi-transparent overlay
-            child: const Center(
+            child: Center(
                 child: SpinKitSquareCircle(
-              color: Colors.green,
+              color: Theme.of(context).colorScheme.primary,
             )),
           )
         : SizedBox.shrink();
