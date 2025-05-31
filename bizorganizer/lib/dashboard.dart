@@ -137,6 +137,43 @@ class _DashboardState extends State<Dashboard> {
         centerTitle: true,
         backgroundColor: Theme.of(context).colorScheme.primary,
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          Consumer<CargoJobProvider>(
+            builder: (context, jobProvider, child) {
+              // Use the new isNetworkOffline flag
+              bool isOffline = jobProvider.isNetworkOffline;
+              // Secondary information: is data from cache?
+              bool dataIsFromCache = jobProvider.isDataFromCache;
+
+              if (isOffline) {
+                return IconButton(
+                  icon: Icon(Icons.radio_button_checked, color: Colors.redAccent),
+                  tooltip: dataIsFromCache
+                             ? 'Network Offline - Displaying Cached Data'
+                             : 'Network Offline - Could not load fresh data',
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(dataIsFromCache
+                                              ? 'Network is offline. Showing data from cache.'
+                                              : 'Network is offline. Failed to load fresh data and no cache available.'))
+                    );
+                  },
+                );
+              } else {
+                // Online
+                return IconButton(
+                  icon: Icon(Icons.radio_button_checked, color: Colors.greenAccent),
+                  tooltip: 'Online Mode - Data is Live',
+                  onPressed: () {
+                     ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Network is online. Data is live.'))
+                    );
+                  },
+                );
+              }
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: StreamBuilder<List<Map<String, dynamic>>>(
@@ -170,27 +207,31 @@ class _DashboardState extends State<Dashboard> {
             }
 
             if (displayJobs.isEmpty) {
-              if (jobProvider.isDataFromCache) {
-                // If this content overflows, make it scrollable.
-                // The overflow of 24px suggests the content is slightly too tall for some screen sizes.
+              String emptyStateMessage = 'No jobs found.'; // Default if online and no jobs
+              if (jobProvider.isNetworkOffline) {
+                if (jobProvider.isDataFromCache) { // Tried cache, but it was empty or failed
+                  emptyStateMessage = 'Network Offline - No cached data found.';
+                } else { // Network offline, and didn't even rely on cache (e.g. cache disabled or first attempt failed)
+                  emptyStateMessage = 'Network Offline - Could not fetch data.';
+                }
+                // Special empty state UI for offline
                 return Center(
-                  child: SingleChildScrollView( // Added to prevent overflow
-                    padding: const EdgeInsets.all(16.0), // Add some padding as well
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16.0),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min, // Ensure column takes minimum vertical space
-                      children: const [
-                        Icon(Icons.wifi_off, size: 48, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('Offline. No cached jobs available.', textAlign: TextAlign.center),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(emptyStateMessage, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
                       ],
                     ),
                   ),
                 );
               }
-              // For the "No jobs available" case, assuming it's simpler and less likely to overflow.
-              // If it also had an icon or more content, it would need similar treatment.
-              return const Center(child: Text('No jobs available.'));
+              // Online but no jobs
+              return Center(child: Text(emptyStateMessage));
             }
 
             // Update counts based on the determined displayJobs
@@ -203,18 +244,23 @@ class _DashboardState extends State<Dashboard> {
             return CustomScrollView(
               controller: _scrollController,
               slivers: [
-                // Optional: Show a banner if data is from cache
-                if (jobProvider.isDataFromCache)
+                // Updated Banner Logic
+                if (jobProvider.isNetworkOffline)
                   SliverToBoxAdapter(
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      color: Colors.orange.withOpacity(0.2),
-                      child: const Row(
+                      color: Colors.amber.withOpacity(0.3), // Amber for more warning
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.wifi_off, color: Colors.orange, size: 16),
-                          SizedBox(width: 8),
-                          Text("Offline Mode: Displaying cached data.", style: TextStyle(color: Colors.orange)),
+                          Icon(Icons.wifi_off_sharp, color: Colors.amber.shade800, size: 18),
+                          const SizedBox(width: 10),
+                          Text(
+                            jobProvider.isDataFromCache && allJobs.isNotEmpty
+                                ? "Network Offline - Showing Cached Data"
+                                : "Network Offline - Attempting to Reconnect...",
+                            style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.w500),
+                          ),
                         ],
                       ),
                     ),

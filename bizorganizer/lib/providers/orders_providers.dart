@@ -1,3 +1,4 @@
+import 'dart:async'; // For Timer
 import 'dart:convert'; // For JSON encoding/decoding
 import 'package:shared_preferences/shared_preferences.dart'; // For local caching
 import 'package:bizorganizer/models/cargo_job.dart';
@@ -9,6 +10,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class CargoJobProvider extends ChangeNotifier {
   final SupabaseClient _supabase = Supabase.instance.client;
   static const String _jobsCacheKey = 'cached_job_data';
+
+  Timer? _reconnectionTimer;
 
   String? _image;
   List<Map<String, dynamic>> _jobs = [];
@@ -24,6 +27,10 @@ class CargoJobProvider extends ChangeNotifier {
   // Flag to indicate if data is from cache
   bool _isDataFromCache = false;
   bool get isDataFromCache => _isDataFromCache;
+
+  // Flag to indicate perceived network status
+  bool _isNetworkOffline = false;
+  bool get isNetworkOffline => _isNetworkOffline;
 
   String? get image => _image;
   List<Map<String, dynamic>> get jobs => _jobs;
@@ -121,23 +128,65 @@ class CargoJobProvider extends ChangeNotifier {
           .select()
           .order('created_at', ascending: false);
 
+      // If fetch is successful, network is considered online.
+      _isNetworkOffline = false;
+      _cancelReconnectionTimer(); // Stop timer if we successfully connected
+      // Note: _isDataFromCache will be set to false by _processAndSetJobsData
+
       List<Map<String, dynamic>> jobsData =
           (response as List).cast<Map<String, dynamic>>();
 
-      _processAndSetJobsData(jobsData, fromCache: false); // Process and set, flagging as not from cache
-      await _saveJobsToCache(jobsData); // Save successful fetch to cache
+      _processAndSetJobsData(jobsData, fromCache: false);
+      await _saveJobsToCache(jobsData);
 
     } catch (e) {
       print('Error fetching jobs data from Supabase: $e');
+      if (!_isNetworkOffline) { // Only set to true and notify if it wasn't already offline
+        _isNetworkOffline = true;
+        // Consider if an immediate notifyListeners() is needed here for _isNetworkOffline
+        // before cache operations, if UI must react instantly to network loss
+        // For now, _processAndSetJobsData called by loadJobsFromCache will notify.
+      }
+      _startReconnectionTimer(); // Start timer when fetch fails
+
       print('Attempting to load from cache as fallback...');
       bool loadedFromCache = await loadJobsFromCache();
+
       if (loadedFromCache) {
-        print('Successfully loaded data from cache.');
+        print('Successfully loaded data from cache while network is offline.');
       } else {
-        print('Failed to load data from cache. Displaying empty or potentially stale data if any was present before.');
-        // _processAndSetJobsData([]); // Ensure lists are cleared if cache is also empty/failed
+        print('Failed to load data from cache while network is offline.');
       }
     }
+  }
+
+  void _startReconnectionTimer() {
+    _reconnectionTimer?.cancel(); // Cancel any existing timer
+    _reconnectionTimer = Timer.periodic(const Duration(seconds: 30), (timer) async {
+      if (!_isNetworkOffline) { // Should not happen if timer is only started when offline
+        timer.cancel();
+        return;
+      }
+      print('Timer: Attempting to reconnect and fetch jobs...');
+      await fetchJobsData();
+      // If fetchJobsData is successful, it will set _isNetworkOffline to false
+      // and call _cancelReconnectionTimer itself.
+    });
+    print('Reconnection timer started.');
+  }
+
+  void _cancelReconnectionTimer() {
+    if (_reconnectionTimer != null && _reconnectionTimer!.isActive) {
+      _reconnectionTimer!.cancel();
+      _reconnectionTimer = null;
+      print('Reconnection timer cancelled.');
+    }
+  }
+
+  @override
+  void dispose() {
+    _cancelReconnectionTimer();
+    super.dispose();
   }
 
   Future<void> addJob(CargoJob job) async {
