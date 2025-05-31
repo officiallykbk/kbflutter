@@ -7,15 +7,15 @@ import 'package:bizorganizer/addjob.dart';
 import 'package:bizorganizer/jobdetails.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart'; // Task 1.d: Import provider
-import 'package:bizorganizer/providers/orders_providers.dart'; // Task 1.d: Import CargoJobProvider
-import 'package:bizorganizer/models/cargo_job.dart'; // Task 1.d: Import CargoJob model
-import 'package:bizorganizer/widgets/revenue_trend_chart_widget.dart'; // Task 1.d: Import RevenueTrendChartWidget
-import 'package:bizorganizer/models/status_constants.dart'; // For payment status options
-import 'package:hive/hive.dart'; // For Hive box access
+import 'package:provider/provider.dart';
+import 'package:bizorganizer/providers/orders_providers.dart';
+import 'package:bizorganizer/models/cargo_job.dart';
+import 'package:bizorganizer/widgets/revenue_trend_chart_widget.dart';
+import 'package:bizorganizer/models/status_constants.dart';
+import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:bizorganizer/models/offline_change.dart'; // For OfflineChange model
-import 'package:flutter/foundation.dart'; // For kIsWeb
+import 'package:bizorganizer/models/offline_change.dart';
+import 'package:flutter/foundation.dart';
 
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
@@ -37,14 +37,10 @@ class _DashboardState extends State<Dashboard> {
 
   late final Stream<List<Map<String, dynamic>>> _jobsStream;
 
-  // Task 1.a: Add State Variables for Dashboard Filters
-  DateTime _dashboardStartDate = DateTime.now()
-      .subtract(const Duration(days: 29)); // Default: Last 30 days (29+today)
+  DateTime _dashboardStartDate =
+      DateTime.now().subtract(const Duration(days: 29));
   DateTime _dashboardEndDate = DateTime.now();
-  // String _dashboardDateRangeDisplay = "Last 30 Days";
-
   String _dashboardPaymentStatusFilter = "Paid + Pending";
-  // final List<String> _paymentStatusOptions = ["Paid + Pending", "Paid Only", "Pending Only"];
 
   @override
   void initState() {
@@ -57,64 +53,10 @@ class _DashboardState extends State<Dashboard> {
     _offlineChangesListenable = box.listenable();
 
     // Ensure data is fetched when the dashboard is initialized
-    // The provider will handle fallback to cache if Supabase fetch fails.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<CargoJobProvider>(context, listen: false).fetchJobsData();
     });
-
-    // Initialize _dashboardDateRangeDisplay based on default dates
-    // _updateDashboardDateRangeDisplay(_dashboardStartDate, _dashboardEndDate, isInitial: true);
   }
-
-//   void _updateDashboardDateRangeDisplay(DateTime start, DateTime end, {bool isInitial = false}) {
-//     // Check if it's a predefined range or custom
-//     if (!isInitial || selectedRangeIsPredefined()) { // If it's a predefined range, use the friendly name
-//         // This part might need adjustment if selectedRange is not directly managed here.
-//         // For now, if it's not a custom range via _selectDashboardDateRange, keep or set predefined text.
-//         if (isInitial && _dashboardDateRangeDisplay == "Last 30 Days") {
-//              // Keep default if it's the initial setup for "Last 30 days"
-//         } else if (!isInitial) { // Only update if it's a custom selection that changed it
-//              _dashboardDateRangeDisplay = "${DateFormat.yMd().format(start)} - ${DateFormat.yMd().format(end)}";
-//         }
-//     } else { // Custom range
-//          _dashboardDateRangeDisplay = "${DateFormat.yMd().format(start)} - ${DateFormat.yMd().format(end)}";
-//     }
-// }
-
-  bool selectedRangeIsPredefined() {
-    // Helper to check if the current _dashboardStartDate and _dashboardEndDate match a predefined range
-    // This is a simplified check. A more robust one would compare against all predefined ranges.
-    final now = DateTime.now();
-    if (_dashboardStartDate.year ==
-            now.subtract(const Duration(days: 29)).year &&
-        _dashboardStartDate.month ==
-            now.subtract(const Duration(days: 29)).month &&
-        _dashboardStartDate.day == now.subtract(const Duration(days: 29)).day &&
-        _dashboardEndDate.year == now.year &&
-        _dashboardEndDate.month == now.month &&
-        _dashboardEndDate.day == now.day) {
-      return true; // Matches "Last 30 Days"
-    }
-    // Add more checks for other predefined ranges if you have them
-    return false;
-  }
-
-  // // Task 1.c: Implement UI for Filters on Dashboard - Date Range Picker Trigger
-  // Future<void> _selectDashboardDateRange(BuildContext context) async {
-  //   final picked = await showDateRangePicker(
-  //     context: context,
-  //     initialDateRange: DateTimeRange(start: _dashboardStartDate, end: _dashboardEndDate),
-  //     firstDate: DateTime(2000),
-  //     lastDate: DateTime.now().add(const Duration(days: 365)),
-  //   );
-  //   if (picked != null && (picked.start != _dashboardStartDate || picked.end != _dashboardEndDate)) {
-  //     setState(() {
-  //       _dashboardStartDate = picked.start;
-  //       _dashboardEndDate = picked.end;
-  //       _dashboardDateRangeDisplay = "${DateFormat.yMd().format(picked.start)} - ${DateFormat.yMd().format(picked.end)}";
-  //     });
-  //   }
-  // }
 
   void _scrollListener() {
     if (_scrollController.position.userScrollDirection ==
@@ -143,9 +85,17 @@ class _DashboardState extends State<Dashboard> {
 
   @override
   Widget build(BuildContext context) {
-    // Task 1.d: Fetch jobs from provider
     final jobProvider = context.watch<CargoJobProvider>();
-    final allJobs = jobProvider.jobs; // This is List<Map<String, dynamic>>
+    final allJobs = jobProvider.jobs;
+    final bool fromCache = jobProvider
+        .isDataFromCache; // Though fromCache itself isn't directly used in this version of build logic, it's good to be aware of
+    final bool isLoading = jobProvider.isLoadingJobs;
+    final String? fetchError = jobProvider.fetchError;
+    final bool isSyncing = jobProvider.isSyncing;
+    final bool isNetworkOffline = jobProvider.isNetworkOffline;
+
+    print(
+        'Dashboard build: isLoadingJobs: $isLoading, isSyncing: $isSyncing, isNetworkOffline: $isNetworkOffline, fetchError: $fetchError, displayJobs count: ${allJobs.length}, fromCache: $fromCache');
 
     return Scaffold(
       appBar: AppBar(
@@ -199,55 +149,50 @@ class _DashboardState extends State<Dashboard> {
         ],
       ),
       body: SafeArea(
-        child: StreamBuilder<List<Map<String, dynamic>>>(
-          stream: _jobsStream,
-          builder: (context, snapshot) {
-            List<Map<String, dynamic>> displayJobs;
-            bool fromCache = jobProvider.isDataFromCache;
-            bool streamHasUsableData =
-                snapshot.hasData && snapshot.data!.isNotEmpty;
-
-            if (snapshot.connectionState == ConnectionState.waiting &&
-                allJobs.isEmpty &&
-                !fromCache) {
+        child: Builder(
+          // Use Builder or Consumer to ensure context is correct for provider
+          builder: (context) {
+            // Handle Loading State
+            if (isLoading && allJobs.isEmpty && !fromCache) {
               return const Center(
                   child: GlobalLoadingIndicator(loadState: true));
             }
 
-            if (snapshot.hasError) {
-              print('Dashboard Stream Error: ${snapshot.error}');
-              // When stream has error, rely solely on provider's data (which might be cached)
-              displayJobs = allJobs;
-              fromCache = jobProvider
-                  .isDataFromCache; // Re-check, as provider might have updated
-              if (displayJobs.isEmpty && !fromCache) {
-                // If stream errored and provider has no fresh data (and not from cache attempt)
-                return Center(
-                    child: Text(
-                        'Error loading jobs. Offline? Cached data: ${fromCache ? 'Available' : 'Not available'}'));
-              }
-            } else if (streamHasUsableData) {
-              displayJobs = snapshot.data!;
-              // If stream has data, assume it's fresh, so not "from cache" in terms of current display priority
-              // However, provider.isDataFromCache tells us about the provider's last successful load source.
-              // For the "Offline mode" banner, jobProvider.isDataFromCache is more relevant.
-            } else {
-              // Stream has no data or is not active, use provider's data
-              displayJobs = allJobs;
+            // Handle Error State
+            if (fetchError != null && allJobs.isEmpty && !fromCache) {
+              // Only show full error if no data at all
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.error_outline, color: Colors.red, size: 48),
+                      SizedBox(height: 16),
+                      Text(
+                        'Error loading jobs: $fetchError',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.red),
+                      ),
+                      SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: () => jobProvider.fetchJobsData(),
+                        child: Text('Retry'),
+                      )
+                    ],
+                  ),
+                ),
+              );
             }
 
-            if (displayJobs.isEmpty) {
+            // Handle Empty State (after loading and error checks)
+            if (!isLoading && allJobs.isEmpty) {
               String emptyStateMessage =
-                  'No jobs found.'; // Default if online and no jobs
+                  'No jobs found. Add a new job to get started!';
               if (jobProvider.isNetworkOffline) {
-                if (jobProvider.isDataFromCache) {
-                  // Tried cache, but it was empty or failed
-                  emptyStateMessage = 'Network Offline - No cached data found.';
-                } else {
-                  // Network offline, and didn't even rely on cache (e.g. cache disabled or first attempt failed)
-                  emptyStateMessage = 'Network Offline - Could not fetch data.';
-                }
-                // Special empty state UI for offline
+                emptyStateMessage = fromCache
+                    ? 'Network Offline - No cached jobs found.'
+                    : 'Network Offline - Could not fetch data.';
                 return Center(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.all(16.0),
@@ -266,31 +211,34 @@ class _DashboardState extends State<Dashboard> {
                   ),
                 );
               }
-              // Online but no jobs
-              return Center(child: Text(emptyStateMessage));
+              return Center(
+                  child: Text(
+                emptyStateMessage,
+                textAlign: TextAlign.center,
+              ));
             }
 
-            // Update counts based on the determined displayJobs
-            _totalJobsCount = displayJobs.length;
-            _pendingJobsCount = displayJobs
+            // Data available, update counts (already using displayJobs from provider)
+            _totalJobsCount = allJobs.length;
+            _pendingJobsCount = allJobs
                 .where((job) =>
                     deliveryStatusFromString(
                         job['delivery_status']?.toString()) ==
                     DeliveryStatus.Scheduled)
                 .length;
-            _completedJobsCount = displayJobs
+            _completedJobsCount = allJobs
                 .where((job) =>
                     deliveryStatusFromString(
                         job['delivery_status']?.toString()) ==
                     DeliveryStatus.Delivered)
                 .length;
-            _cancelledJobsCount = displayJobs
+            _cancelledJobsCount = allJobs
                 .where((job) =>
                     deliveryStatusFromString(
                         job['delivery_status']?.toString()) ==
                     DeliveryStatus.Cancelled)
                 .length;
-            _overdueJobsCount = displayJobs
+            _overdueJobsCount = allJobs
                 .where((job) =>
                     deliveryStatusFromString(
                         job['delivery_status']?.toString()) ==
@@ -398,7 +346,7 @@ class _DashboardState extends State<Dashboard> {
                               child: Hero(
                                 tag: 'revenueTrendChartHero',
                                 child: RevenueTrendChartWidget(
-                                  // Use allJobs from provider for consistency in chart, as it's also cache-aware
+                                  // Use displayJobs (which is jobProvider.jobs) for the chart
                                   jobs: allJobs
                                       .map(
                                           (jobMap) => CargoJob.fromJson(jobMap))
@@ -451,11 +399,10 @@ class _DashboardState extends State<Dashboard> {
                   sliver: SliverList(
                     delegate: SliverChildBuilderDelegate(
                       (BuildContext context, int index) {
-                        final job = displayJobs[index];
+                        final job = allJobs[index];
                         return _buildJobCard(context, job);
                       },
-                      childCount:
-                          displayJobs.length, // Use displayJobs.length here
+                      childCount: allJobs.length, // Use displayJobs.length here
                     ),
                   ),
                 ),
@@ -495,8 +442,7 @@ class _DashboardState extends State<Dashboard> {
     final stream = supabaseInstance
         .from('cargo_jobs')
         .stream(primaryKey: ['id'])
-        .order('created_at',
-            ascending: false) // Order by created_at for consistency
+        .order('created_at', ascending: false)
         .map((rows) => rows.map((row) => row as Map<String, dynamic>).toList());
     return stream;
   }

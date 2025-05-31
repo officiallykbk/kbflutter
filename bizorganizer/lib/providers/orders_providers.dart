@@ -1,6 +1,6 @@
 import 'dart:async'; // For Timer
 // import 'dart:convert'; // For JSON encoding/decoding - No longer needed for Hive with TypeAdapter
-import 'package:shared_preferences/shared_preferences.dart'; // For local caching
+// import 'package:shared_preferences/shared_preferences.dart'; // No longer needed
 import 'package:hive/hive.dart'; // Import Hive
 import 'package:bizorganizer/models/cargo_job.dart';
 import 'package:bizorganizer/models/job_history_entry.dart';
@@ -48,13 +48,18 @@ class CargoJobProvider extends ChangeNotifier {
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
 
+  // Flag for loading state of jobs
+  bool _isLoadingJobs = false;
+  bool get isLoadingJobs => _isLoadingJobs;
+
+  // Error message for fetching jobs
+  String? _fetchError;
+  String? get fetchError => _fetchError;
+
   // Constructor
   CargoJobProvider() {
     _initializeConnectivityStatus();
-    _connectivitySubscription =
-        _connectivity.onConnectivityChanged.listen((ConnectivityResult result) {
-      _updateConnectionStatus(result);
-    });
+    _setupConnectivityListener();
   }
 
   String? get image => _image;
@@ -70,6 +75,8 @@ class CargoJobProvider extends ChangeNotifier {
 
   void _processAndSetJobsData(List<Map<String, dynamic>> jobsData,
       {bool fromCache = false}) {
+    print(
+        '_processAndSetJobsData: Received ${jobsData.length} jobs. From cache: $fromCache. Notifying listeners.');
     _jobs = jobsData;
     _isDataFromCache = fromCache; // Set the flag
 
@@ -152,32 +159,44 @@ class CargoJobProvider extends ChangeNotifier {
   }
 
   Future<void> _initializeConnectivityStatus() async {
-    try {
-      final result = await _connectivity.checkConnectivity();
-      _updateConnectionStatus(result);
-    } catch (e) {
-      print('Error checking connectivity: $e');
-    }
+    final ConnectivityResult initialResult =
+        await _connectivity.checkConnectivity();
+    _updateConnectionStatus(initialResult);
   }
 
   void _updateConnectionStatus(ConnectivityResult result) {
-    bool isConnected = result != ConnectivityResult.none;
-    if (!isConnected && !_isNetworkOffline) {
-      _isNetworkOffline = true;
-      notifyListeners();
-    } else if (isConnected && _isNetworkOffline) {
-      _isNetworkOffline = false;
-      fetchJobsData(); // Try to fetch fresh data when back online
+    final bool wasOffline = _isNetworkOffline;
+    _isNetworkOffline = result == ConnectivityResult.none;
+
+    if (_isNetworkOffline != wasOffline) {
+      if (_isNetworkOffline) {
+        print('Connectivity: Offline');
+        if (_reconnectionTimer == null || !_reconnectionTimer!.isActive) {
+          _startReconnectionTimer();
+        }
+      } else {
+        print('Connectivity: Online');
+        _cancelReconnectionTimer();
+        _processOfflineChanges(); // Process queue when coming back online
+      }
       notifyListeners();
     }
+  }
+
+  void _setupConnectivityListener() {
+    _connectivitySubscription =
+        _connectivity.onConnectivityChanged.listen((ConnectivityResult result) {
+      _updateConnectionStatus(result);
+    });
   }
 
   Future<void> _processOfflineChanges() async {
     if (_isSyncing) return; // Prevent concurrent syncs
 
     _isSyncing = true;
+    print('CargoJobProvider: Setting _isSyncing = true. Notifying listeners.');
     notifyListeners();
-    print('Starting offline changes sync...');
+    // print('Starting offline changes sync...'); // Redundant with the one above
 
     final box = Hive.box<OfflineChange>(_offlineChangesBoxName);
     try {
@@ -288,50 +307,58 @@ class CargoJobProvider extends ChangeNotifier {
       await fetchJobsData();
     } finally {
       _isSyncing = false;
+      print(
+          'CargoJobProvider: Setting _isSyncing = false in finally. Notifying listeners.');
       notifyListeners();
-      print('Offline changes sync finished.');
+      // print('Offline changes sync finished.'); // Redundant
     }
   }
 
   Future<void> fetchJobsData() async {
-    // If connectivity_plus says we are offline, try loading from cache first.
-    if (_isNetworkOffline) {
-      print(
-          'fetchJobsData: Network is reported offline by connectivity_plus. Attempting cache load.');
-      bool loadedFromCache = await loadJobsFromCache();
-      if (loadedFromCache) {
-        print(
-            'fetchJobsData: Successfully loaded data from cache while offline.');
-      } else {
-        print('fetchJobsData: Failed to load data from cache while offline.');
-        // Optionally, still set _isDataFromCache to true and ensure UI reflects no data.
-        _isDataFromCache = true;
-        _processAndSetJobsData([], fromCache: true);
-      }
-      return; // Do not attempt to fetch from Supabase if connectivity_plus says offline
-    }
+    print(
+        'CargoJobProvider: Setting _isLoadingJobs = true. Current error: $_fetchError. Notifying listeners.');
+    _isLoadingJobs = true;
+    _fetchError = null; // Clear previous error
+    notifyListeners();
 
     try {
+      // If connectivity_plus says we are offline, try loading from cache first.
+      if (_isNetworkOffline) {
+        print(
+            'fetchJobsData: Network is reported offline by connectivity_plus. Attempting cache load.');
+        bool loadedFromCache = await loadJobsFromCache();
+        if (loadedFromCache) {
+          print(
+              'fetchJobsData: Successfully loaded data from cache while offline.');
+          _fetchError =
+              null; // Loaded from cache, so no "fetch" error per se for this attempt.
+        } else {
+          print('fetchJobsData: Failed to load data from cache while offline.');
+          _fetchError = 'Network offline and no cached data available.';
+          _isDataFromCache =
+              true; // Indicate that we attempted cache but it was empty or failed
+          _processAndSetJobsData([], fromCache: true); // Ensure lists are empty
+        }
+        return;
+      }
+
       print('Fetching jobs data from Supabase...');
       final response = await _supabase
           .from('cargo_jobs')
           .select()
           .order('created_at', ascending: false);
 
-      // Supabase call succeeded
       List<Map<String, dynamic>> jobsData =
           (response as List).cast<Map<String, dynamic>>();
+      print(
+          'fetchJobsData: About to call _processAndSetJobsData with ${jobsData.length} jobs. From cache: false');
       _processAndSetJobsData(jobsData, fromCache: false);
       await _saveJobsToCache(jobsData);
-      // If Supabase call was successful, any reconnection timer due to previous Supabase errors can be cancelled.
-      // _cancelReconnectionTimer(); // This might be redundant if connectivity status itself handles it.
-      // However, keeping it ensures that if Supabase was the issue, not network, we stop retrying.
+      _fetchError = null; // Clear any previous error on successful fetch
+      // _cancelReconnectionTimer(); // Consider if this is needed here or if connectivity handling is enough
     } catch (e) {
       print('Error fetching jobs data from Supabase: $e');
-      // Even if connectivity_plus says online, Supabase might be unreachable.
-      // Start a timer to retry fetching from Supabase, not for network reconnection.
-      // The existing _startReconnectionTimer can serve this purpose.
-      // _isNetworkOffline remains false as per connectivity_plus
+      _fetchError = 'Failed to fetch jobs: $e';
       _startReconnectionTimer(); // Keep retrying Supabase if it fails.
 
       print(
@@ -339,9 +366,16 @@ class CargoJobProvider extends ChangeNotifier {
       bool loadedFromCache = await loadJobsFromCache();
       if (loadedFromCache) {
         print('Successfully loaded data from cache after Supabase error.');
+        // _fetchError remains from the Supabase error, but data is available from cache.
       } else {
         print('Failed to load data from cache after Supabase error.');
+        // _fetchError is already set from Supabase error.
       }
+    } finally {
+      print(
+          'CargoJobProvider: Setting _isLoadingJobs = false in finally. Current error: $_fetchError. Notifying listeners.');
+      _isLoadingJobs = false;
+      notifyListeners();
     }
   }
 
@@ -369,30 +403,38 @@ class CargoJobProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    _connectivitySubscription?.cancel();
+    _connectivitySubscription?.cancel(); // Cancel connectivity subscription
     _cancelReconnectionTimer();
     super.dispose();
   }
 
-  Future<void> _addToOfflineQueue(ChangeOperation operation,
-      {String? jobId, Map<String, dynamic>? jobDataMap, CargoJob? job}) async {
-    final changeId = DateTime.now().millisecondsSinceEpoch.toString();
+  Future<void> _addChangeToQueue(ChangeOperation operation,
+      {String? jobId, CargoJob? job}) async {
+    final String changeId = _uuid.v4(); // Generate ID for the change itself
+    Map<String, dynamic>? jobDataMap = job?.toJson();
+
+    // For create operations, if the job has a client-generated ID, store it with the change.
+    // This client-generated ID will be part of jobDataMap.
+    // It will be stripped before sending to Supabase during _processOfflineChanges.
+    // The main _jobs list will be reconciled by fetchJobsData after queue processing.
+
     final change = OfflineChange(
       id: changeId,
       operation: operation,
-      jobId: jobId ?? job?.id,
+      jobId: jobId ??
+          job?.id, // For update/delete, this is the permanent ID. For create, it might be client-generated.
       jobData: jobDataMap != null ? jsonEncode(jobDataMap) : null,
       timestamp: DateTime.now(),
     );
     final box = Hive.box<OfflineChange>(_offlineChangesBoxName);
-    await box.put(changeId, change);
+    await box.put(change.id, change); // Use the change's own ID as the key
     print(
-        'Added change to queue: $changeId - Op: ${operation.toString()}, JobID: ${jobId ?? job?.id}');
+        'Added change to queue: ${change.id} - Op: ${change.operation}, JobID: ${change.jobId}');
   }
 
   Future<void> addJob(CargoJob job) async {
     if (_isNetworkOffline) {
-      print('Network offline. Queueing job creation: ${job.shipperName}');
+      // print('Network offline. Queueing job creation: ${job.shipperName}'); // Kept original, more specific one to be added
       // Use a temporary ID for optimistic update if your CargoJob model needs an ID.
       // Or ensure your UI can handle jobs that might not have a final ID yet.
       // If job.id is null, assign a temporary client-side UUID for optimistic UI updates.
@@ -418,15 +460,17 @@ class CargoJobProvider extends ChangeNotifier {
             )
           : job;
 
-      // The job object passed to _addToOfflineQueue will contain the tempJobIdForOptimisticCreate if job.id was null.
-      await _addToOfflineQueue(ChangeOperation.create,
-          job: jobForOptimisticAdd);
+      // The job object passed to _addChangeToQueue will contain the tempJobIdForOptimisticCreate if job.id was null.
+      await _addChangeToQueue(ChangeOperation.create, job: jobForOptimisticAdd);
+      print(
+          'CargoJobProvider: addJob (Offline). About to call _processAndSetJobsData for optimistic update. New temp job ID: ${jobForOptimisticAdd.id}');
 
       // Optimistic Update using jobForOptimisticAdd (which has the temp ID if original was null)
       _jobs.insert(0, jobForOptimisticAdd.toJson());
-      _processAndSetJobsData(List<Map<String, dynamic>>.from(_jobs));
+      _processAndSetJobsData(
+          List<Map<String, dynamic>>.from(_jobs)); // This calls notifyListeners
       await _saveJobsToCache(_jobs);
-      notifyListeners();
+      // notifyListeners(); // Redundant: _processAndSetJobsData already called it
       return;
     }
 
@@ -440,8 +484,10 @@ class CargoJobProvider extends ChangeNotifier {
         throw Exception(
             'Failed to add job: Supabase returned no data. Check RLS or constraints.');
       }
+      print(
+          'CargoJobProvider: addJob (Online) successful. About to call fetchJobsData. Current _jobs count: ${_jobs.length}');
       await fetchJobsData(); // Refresh local cache from Supabase
-      print('Job added successfully online and data refreshed.');
+      // print('Job added successfully online and data refreshed.'); // fetchJobsData will print its own status
     } on PostgrestException catch (e) {
       print('Error adding job to Supabase: ${e.message}');
       throw Exception('Failed to add job to Supabase: ${e.message}');
@@ -453,22 +499,27 @@ class CargoJobProvider extends ChangeNotifier {
 
   Future<void> removeJob(String jobId) async {
     if (_isNetworkOffline) {
-      print('Network offline. Queueing job deletion: $jobId');
-      await _addToOfflineQueue(ChangeOperation.delete, jobId: jobId);
+      // print('Network offline. Queueing job deletion: $jobId'); // Kept original
+      await _addChangeToQueue(ChangeOperation.delete, jobId: jobId);
+      print(
+          'CargoJobProvider: removeJob (Offline). About to call _processAndSetJobsData for optimistic update. Job ID to remove: $jobId');
 
       // Optimistic Update
       _jobs.removeWhere((j) => j['id'] == jobId);
-      _processAndSetJobsData(List<Map<String, dynamic>>.from(_jobs));
+      _processAndSetJobsData(
+          List<Map<String, dynamic>>.from(_jobs)); // This calls notifyListeners
       await _saveJobsToCache(_jobs);
-      notifyListeners();
+      // notifyListeners(); // Redundant
       return;
     }
 
     // Online: Proceed with Supabase call
     try {
       await _supabase.from('cargo_jobs').delete().eq('id', jobId);
+      print(
+          'CargoJobProvider: removeJob (Online) successful. About to call fetchJobsData. Current _jobs count: ${_jobs.length}');
       await fetchJobsData(); // Refresh
-      print('Job removed successfully online');
+      // print('Job removed successfully online');
     } catch (e) {
       print('Error removing job online: $e');
       throw Exception('Error removing job online: $e');
@@ -590,8 +641,8 @@ class CargoJobProvider extends ChangeNotifier {
         updatedAt: DateTime.now(), // Update timestamp
       );
 
-      await _addToOfflineQueue(ChangeOperation.update,
-          jobId: jobId, jobDataMap: updatedJobForQueue.toJson());
+      await _addChangeToQueue(ChangeOperation.update,
+          jobId: jobId, job: updatedJobForQueue);
 
       // Optimistic Update
       _jobs[jobIndex] = updatedJobForQueue.toJson();
@@ -677,8 +728,8 @@ class CargoJobProvider extends ChangeNotifier {
         createdAt: jobToUpdate.createdAt,
         updatedAt: DateTime.now(), // Update timestamp
       );
-      await _addToOfflineQueue(ChangeOperation.update,
-          jobId: jobId, jobDataMap: updatedJobForQueue.toJson());
+      await _addChangeToQueue(ChangeOperation.update,
+          jobId: jobId, job: updatedJobForQueue);
 
       // Optimistic Update
       _jobs[jobIndex] = updatedJobForQueue.toJson();
