@@ -20,8 +20,7 @@ class SignInScreen extends StatelessWidget {
             password: "SecurePass123!");
       } catch (e) {
         print('Failed to login ${e}');
-        CustomSnackBar.show(context, 'Failed to login', Icons.error,
-            backgroundColor: Colors.red);
+        CustomSnackBar.show(context, 'Failed to login', 'error');
       }
     }
 
@@ -175,7 +174,7 @@ class SignInScreen extends StatelessWidget {
             ),
             Consumer<LoadingProvider>(
                 builder: (context, loadingModel, child) =>
-                    GlobalLoading(loadState: loadingModel.isLoading))
+                    GlobalLoadingIndicator(loadState: loadingModel.isLoading))
           ],
         ),
       ),

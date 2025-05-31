@@ -33,13 +33,13 @@ class _DashboardState extends State<Dashboard> {
   late final Stream<List<Map<String, dynamic>>> _jobsStream;
 
   // Task 1.a: Add State Variables for Dashboard Filters
-  DateTime _dashboardStartDate = DateTime.now().subtract(const Duration(days: 29)); // Default: Last 30 days (29+today)
+  DateTime _dashboardStartDate = DateTime.now()
+      .subtract(const Duration(days: 29)); // Default: Last 30 days (29+today)
   DateTime _dashboardEndDate = DateTime.now();
   // String _dashboardDateRangeDisplay = "Last 30 Days";
 
   String _dashboardPaymentStatusFilter = "Paid + Pending";
   // final List<String> _paymentStatusOptions = ["Paid + Pending", "Paid Only", "Pending Only"];
-
 
   @override
   void initState() {
@@ -72,23 +72,23 @@ class _DashboardState extends State<Dashboard> {
 //     }
 // }
 
-
   bool selectedRangeIsPredefined() {
     // Helper to check if the current _dashboardStartDate and _dashboardEndDate match a predefined range
     // This is a simplified check. A more robust one would compare against all predefined ranges.
     final now = DateTime.now();
-    if (_dashboardStartDate.year == now.subtract(const Duration(days: 29)).year &&
-        _dashboardStartDate.month == now.subtract(const Duration(days: 29)).month &&
+    if (_dashboardStartDate.year ==
+            now.subtract(const Duration(days: 29)).year &&
+        _dashboardStartDate.month ==
+            now.subtract(const Duration(days: 29)).month &&
         _dashboardStartDate.day == now.subtract(const Duration(days: 29)).day &&
         _dashboardEndDate.year == now.year &&
         _dashboardEndDate.month == now.month &&
         _dashboardEndDate.day == now.day) {
-        return true; // Matches "Last 30 Days"
+      return true; // Matches "Last 30 Days"
     }
     // Add more checks for other predefined ranges if you have them
     return false;
   }
-
 
   // // Task 1.c: Implement UI for Filters on Dashboard - Date Range Picker Trigger
   // Future<void> _selectDashboardDateRange(BuildContext context) async {
@@ -108,13 +108,19 @@ class _DashboardState extends State<Dashboard> {
   // }
 
   void _scrollListener() {
-    if (_scrollController.position.userScrollDirection == ScrollDirection.reverse) {
+    if (_scrollController.position.userScrollDirection ==
+        ScrollDirection.reverse) {
       if (_isFabVisible) {
-        setState(() { _isFabVisible = false; });
+        setState(() {
+          _isFabVisible = false;
+        });
       }
-    } else if (_scrollController.position.userScrollDirection == ScrollDirection.forward) {
+    } else if (_scrollController.position.userScrollDirection ==
+        ScrollDirection.forward) {
       if (!_isFabVisible) {
-        setState(() { _isFabVisible = true; });
+        setState(() {
+          _isFabVisible = true;
+        });
       }
     }
   }
@@ -145,20 +151,27 @@ class _DashboardState extends State<Dashboard> {
           builder: (context, snapshot) {
             List<Map<String, dynamic>> displayJobs;
             bool fromCache = jobProvider.isDataFromCache;
-            bool streamHasUsableData = snapshot.hasData && snapshot.data!.isNotEmpty;
+            bool streamHasUsableData =
+                snapshot.hasData && snapshot.data!.isNotEmpty;
 
-            if (snapshot.connectionState == ConnectionState.waiting && allJobs.isEmpty && !fromCache) {
-              return const Center(child: GlobalLoading(loadState: true));
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                allJobs.isEmpty &&
+                !fromCache) {
+              return const Center(
+                  child: GlobalLoadingIndicator(loadState: true));
             }
 
             if (snapshot.hasError) {
               print('Dashboard Stream Error: ${snapshot.error}');
               // When stream has error, rely solely on provider's data (which might be cached)
               displayJobs = allJobs;
-              fromCache = jobProvider.isDataFromCache; // Re-check, as provider might have updated
+              fromCache = jobProvider
+                  .isDataFromCache; // Re-check, as provider might have updated
               if (displayJobs.isEmpty && !fromCache) {
-                 // If stream errored and provider has no fresh data (and not from cache attempt)
-                return Center(child: Text('Error loading jobs. Offline? Cached data: ${fromCache ? 'Available' : 'Not available'}'));
+                // If stream errored and provider has no fresh data (and not from cache attempt)
+                return Center(
+                    child: Text(
+                        'Error loading jobs. Offline? Cached data: ${fromCache ? 'Available' : 'Not available'}'));
               }
             } else if (streamHasUsableData) {
               displayJobs = snapshot.data!;
@@ -175,15 +188,19 @@ class _DashboardState extends State<Dashboard> {
                 // If this content overflows, make it scrollable.
                 // The overflow of 24px suggests the content is slightly too tall for some screen sizes.
                 return Center(
-                  child: SingleChildScrollView( // Added to prevent overflow
-                    padding: const EdgeInsets.all(16.0), // Add some padding as well
+                  child: SingleChildScrollView(
+                    // Added to prevent overflow
+                    padding:
+                        const EdgeInsets.all(16.0), // Add some padding as well
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min, // Ensure column takes minimum vertical space
+                      mainAxisSize: MainAxisSize
+                          .min, // Ensure column takes minimum vertical space
                       children: const [
                         Icon(Icons.wifi_off, size: 48, color: Colors.grey),
                         SizedBox(height: 16),
-                        Text('Offline. No cached jobs available.', textAlign: TextAlign.center),
+                        Text('Offline. No cached jobs available.',
+                            textAlign: TextAlign.center),
                       ],
                     ),
                   ),
@@ -196,10 +213,30 @@ class _DashboardState extends State<Dashboard> {
 
             // Update counts based on the determined displayJobs
             _totalJobsCount = displayJobs.length;
-            _pendingJobsCount = displayJobs.where((job) =>  deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.Scheduled).length;
-            _completedJobsCount = displayJobs.where((job) => deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.Delivered).length;
-            _cancelledJobsCount = displayJobs.where((job) => deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.Cancelled).length;
-            _overdueJobsCount = displayJobs.where((job) => deliveryStatusFromString(job['delivery_status']?.toString()) == DeliveryStatus.Delayed).length;
+            _pendingJobsCount = displayJobs
+                .where((job) =>
+                    deliveryStatusFromString(
+                        job['delivery_status']?.toString()) ==
+                    DeliveryStatus.Scheduled)
+                .length;
+            _completedJobsCount = displayJobs
+                .where((job) =>
+                    deliveryStatusFromString(
+                        job['delivery_status']?.toString()) ==
+                    DeliveryStatus.Delivered)
+                .length;
+            _cancelledJobsCount = displayJobs
+                .where((job) =>
+                    deliveryStatusFromString(
+                        job['delivery_status']?.toString()) ==
+                    DeliveryStatus.Cancelled)
+                .length;
+            _overdueJobsCount = displayJobs
+                .where((job) =>
+                    deliveryStatusFromString(
+                        job['delivery_status']?.toString()) ==
+                    DeliveryStatus.Delayed)
+                .length;
 
             return CustomScrollView(
               controller: _scrollController,
@@ -208,14 +245,16 @@ class _DashboardState extends State<Dashboard> {
                 if (jobProvider.isDataFromCache)
                   SliverToBoxAdapter(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
                       color: Colors.orange.withOpacity(0.2),
                       child: const Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.wifi_off, color: Colors.orange, size: 16),
                           SizedBox(width: 8),
-                          Text("Offline Mode: Displaying cached data.", style: TextStyle(color: Colors.orange)),
+                          Text("Offline Mode: Displaying cached data.",
+                              style: TextStyle(color: Colors.orange)),
                         ],
                       ),
                     ),
@@ -231,21 +270,30 @@ class _DashboardState extends State<Dashboard> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text("Revenue Overview", style: Theme.of(context).textTheme.headlineSmall?.copyWith(color: Colors.white70)),
-                                   Align(
-                                      alignment: Alignment.centerRight,
-                                      child: TextButton(
-                                        onPressed: () => Navigator.of(context).push(
-                                          MaterialPageRoute(builder: (_) => JobStatsPage(
-                                                initialStartDate: _dashboardStartDate,
-                                                initialEndDate: _dashboardEndDate,
-                                                initialPaymentStatusFilter: _dashboardPaymentStatusFilter,
-                                          ))),
-                                        child: const Text("View More Stats ->", style: TextStyle(fontSize: 12)),
-                                      ),
-                                    )
+                                Text("Revenue Overview",
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall
+                                        ?.copyWith(color: Colors.white70)),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: () => Navigator.of(context)
+                                        .push(MaterialPageRoute(
+                                            builder: (_) => JobStatsPage(
+                                                  initialStartDate:
+                                                      _dashboardStartDate,
+                                                  initialEndDate:
+                                                      _dashboardEndDate,
+                                                  initialPaymentStatusFilter:
+                                                      _dashboardPaymentStatusFilter,
+                                                ))),
+                                    child: const Text("View More Stats ->",
+                                        style: TextStyle(fontSize: 12)),
+                                  ),
+                                )
                               ],
                             ),
                             const SizedBox(height: 12),
@@ -257,7 +305,8 @@ class _DashboardState extends State<Dashboard> {
                                     builder: (context) => JobStatsPage(
                                       initialStartDate: _dashboardStartDate,
                                       initialEndDate: _dashboardEndDate,
-                                      initialPaymentStatusFilter: _dashboardPaymentStatusFilter,
+                                      initialPaymentStatusFilter:
+                                          _dashboardPaymentStatusFilter,
                                     ),
                                   ),
                                 );
@@ -266,10 +315,14 @@ class _DashboardState extends State<Dashboard> {
                                 tag: 'revenueTrendChartHero',
                                 child: RevenueTrendChartWidget(
                                   // Use allJobs from provider for consistency in chart, as it's also cache-aware
-                                  jobs: allJobs.map((jobMap) => CargoJob.fromJson(jobMap)).toList(),
+                                  jobs: allJobs
+                                      .map(
+                                          (jobMap) => CargoJob.fromJson(jobMap))
+                                      .toList(),
                                   startDate: _dashboardStartDate,
                                   endDate: _dashboardEndDate,
-                                  paymentStatusFilter: _dashboardPaymentStatusFilter,
+                                  paymentStatusFilter:
+                                      _dashboardPaymentStatusFilter,
                                 ),
                               ),
                             ),
@@ -281,22 +334,28 @@ class _DashboardState extends State<Dashboard> {
                   ),
                 ),
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16,0,16,16), // Adjusted padding
+                  padding: const EdgeInsets.fromLTRB(
+                      16, 0, 16, 16), // Adjusted padding
                   sliver: SliverList(
                     delegate: SliverChildListDelegate([
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         child: Row(
                           children: [
-                            _buildSummaryCard(context, 'Total Jobs', _totalJobsCount, Colors.blue.shade700),
+                            _buildSummaryCard(context, 'Total Jobs',
+                                _totalJobsCount, Colors.blue.shade700),
                             const SizedBox(width: 8),
-                            _buildSummaryCard(context, 'Pending', _pendingJobsCount, Colors.orange.shade700),
+                            _buildSummaryCard(context, 'Pending',
+                                _pendingJobsCount, Colors.orange.shade700),
                             const SizedBox(width: 8),
-                            _buildSummaryCard(context, 'Delivered', _completedJobsCount, Colors.green.shade700),
+                            _buildSummaryCard(context, 'Delivered',
+                                _completedJobsCount, Colors.green.shade700),
                             const SizedBox(width: 8),
-                            _buildSummaryCard(context, 'Cancelled', _cancelledJobsCount, Colors.red.shade700),
+                            _buildSummaryCard(context, 'Cancelled',
+                                _cancelledJobsCount, Colors.red.shade700),
                             const SizedBox(width: 8),
-                            _buildSummaryCard(context, 'Delayed', _overdueJobsCount, Colors.purple.shade700),
+                            _buildSummaryCard(context, 'Delayed',
+                                _overdueJobsCount, Colors.purple.shade700),
                           ],
                         ),
                       ),
@@ -311,7 +370,8 @@ class _DashboardState extends State<Dashboard> {
                         final job = displayJobs[index];
                         return _buildJobCard(context, job);
                       },
-                      childCount: displayJobs.length, // Use displayJobs.length here
+                      childCount:
+                          displayJobs.length, // Use displayJobs.length here
                     ),
                   ),
                 ),
@@ -331,7 +391,8 @@ class _DashboardState extends State<Dashboard> {
               // Before navigating, try to refresh data to ensure "Add Job" screen
               // might have freshest customer list, etc.
               // This is optional, but can improve UX if coming back online.
-              await Provider.of<CargoJobProvider>(context, listen: false).fetchJobsData();
+              await Provider.of<CargoJobProvider>(context, listen: false)
+                  .fetchJobsData();
               Navigator.of(context)
                   .push(MaterialPageRoute(builder: (_) => const AddJob()));
             },
@@ -345,16 +406,19 @@ class _DashboardState extends State<Dashboard> {
     );
   }
 
-  Stream<List<Map<String, dynamic>>> _getJobsStream(SupabaseClient supabaseInstance) {
+  Stream<List<Map<String, dynamic>>> _getJobsStream(
+      SupabaseClient supabaseInstance) {
     final stream = supabaseInstance
         .from('cargo_jobs')
         .stream(primaryKey: ['id'])
-        .order('created_at', ascending: false) // Order by created_at for consistency
+        .order('created_at',
+            ascending: false) // Order by created_at for consistency
         .map((rows) => rows.map((row) => row as Map<String, dynamic>).toList());
     return stream;
   }
 
-  Widget _buildSummaryCard(BuildContext context, String title, int count, Color color) {
+  Widget _buildSummaryCard(
+      BuildContext context, String title, int count, Color color) {
     return Card(
       elevation: 2,
       color: color.withOpacity(0.15),
@@ -366,7 +430,14 @@ class _DashboardState extends State<Dashboard> {
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(title, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: color, fontWeight: FontWeight.bold), textAlign: TextAlign.center,),
+            Text(
+              title,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(color: color, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 8),
             Text(
               count.toString(),
@@ -409,7 +480,8 @@ class _DashboardState extends State<Dashboard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 4),
-            Text("Date: ${_formatJobDate(job['pickup_date'] ?? job['created_at'])}"),
+            Text(
+                "Date: ${_formatJobDate(job['pickup_date'] ?? job['created_at'])}"),
             const SizedBox(height: 2),
             Text("Status: ${job['delivery_status'] ?? 'N/A'}",
                 style: TextStyle(
@@ -426,7 +498,10 @@ class _DashboardState extends State<Dashboard> {
           children: [
             Text(
               "\$${(job['agreed_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}",
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                  color: Colors.green),
             ),
           ],
         ),

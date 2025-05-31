@@ -110,7 +110,7 @@ class _AddJobState extends State<AddJob> {
     } catch (e) {
       print('Error loading customer names: $e');
       if (mounted) {
-        CustomSnackBar.show(context, 'Error loading customer names: $e', Icons.error, backgroundColor: Colors.red);
+        CustomSnackBar.show(context, 'Error loading customer names: $e', 'error');
       }
     } finally {
       if (mounted) {
@@ -143,7 +143,7 @@ class _AddJobState extends State<AddJob> {
     } catch (e) {
       print('Failed to pick image: $e');
       if (mounted) {
-        CustomSnackBar.show(context, 'Failed to pick image: $e', Icons.error, backgroundColor: Colors.red);
+        CustomSnackBar.show(context, 'Failed to pick image: $e', 'error');
       }
     } finally {
       if (mounted) {
@@ -160,14 +160,14 @@ class _AddJobState extends State<AddJob> {
       await supabase.storage.from('receipts').upload(path, image);
 
       if (!mounted) return;
-      CustomSnackBar.show(context, 'Image Uploaded', Icons.check);
+      CustomSnackBar.show(context, 'Image Uploaded', 'success');
       setState(() {
         _imageUrl = supabase.storage.from('receipts').getPublicUrl(path);
       });
     } catch (e) {
       print('Failed to upload image: $e');
       if (mounted) {
-         CustomSnackBar.show(context, 'Failed to Upload Image', Icons.error, backgroundColor: Colors.red);
+         CustomSnackBar.show(context, 'Failed to Upload Image', 'error');
       }
     }
   }
@@ -193,7 +193,7 @@ class _AddJobState extends State<AddJob> {
 
   Future<void> _proceedWithSavingJob() async {
     if (!_formKey.currentState!.validate()) {
-      CustomSnackBar.show(context, 'Please fix errors in the form.', Icons.error, backgroundColor: Colors.orange);
+      CustomSnackBar.show(context, 'Please fix errors in the form.', 'error');
       return;
     }
 
@@ -232,15 +232,15 @@ class _AddJobState extends State<AddJob> {
       final provider = context.read<CargoJobProvider>();
       if (widget.isEditing) {
         // await provider.editJob(jobData.id!, jobData);
-        if (mounted) CustomSnackBar.show(context, 'Job updated successfully', Icons.check);
+        if (mounted) CustomSnackBar.show(context, 'Job updated successfully', 'success');
       } else {
         await provider.addJob(jobData);
-        if (mounted) CustomSnackBar.show(context, 'Job added successfully', Icons.check);
+        if (mounted) CustomSnackBar.show(context, 'Job added successfully', 'success');
       }
       if (mounted) Navigator.of(context).pop(true); // Pop AddJob screen
     } catch (e) {
       print('Error saving/updating job: $e');
-      if (mounted) CustomSnackBar.show(context, 'Failed to save job: $e', Icons.error, backgroundColor: Colors.red);
+      if (mounted) CustomSnackBar.show(context, 'Failed to save job: $e', 'error');
     }
   }
 
