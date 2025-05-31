@@ -130,14 +130,13 @@ class SignInScreen extends StatelessWidget {
                             ),
                             ElevatedButton(
                               onPressed: () async {
-                                context
-                                    .read<LoadingProvider>()
-                                    .setLoading(true);
+                                context.read<LoadingProvider>().showloading();
+                                //                         final loadingProvider =
+                                //     Provider.of<LoadingProvider>(context, listen: false);
+                                // loadingProvider.showloading();
                                 if (_formKey.currentState!.validate()) {
                                   await login();
-                                  context
-                                    .read<LoadingProvider>()
-                                    .setLoading(false);
+                                  context.read<LoadingProvider>().hideloading();
                                 }
                               },
                               style: ElevatedButton.styleFrom(
@@ -176,7 +175,7 @@ class SignInScreen extends StatelessWidget {
             ),
             Consumer<LoadingProvider>(
                 builder: (context, loadingModel, child) =>
-                    GlobalLoadingIndicator(loadState: loadingModel.isLoading))
+                    loading(loadState: loadingModel.isLoading))
           ],
         ),
       ),
