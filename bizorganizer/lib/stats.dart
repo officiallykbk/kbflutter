@@ -1,4 +1,3 @@
-import 'package:bizorganizer/main.dart';
 import 'package:bizorganizer/providers/orders_providers.dart'; 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
