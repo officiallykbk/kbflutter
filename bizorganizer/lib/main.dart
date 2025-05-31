@@ -2,11 +2,11 @@ import 'package:bizorganizer/dashboard.dart';
 import 'package:bizorganizer/providers/loading_provider.dart';
 import 'package:bizorganizer/providers/orders_providers.dart';
 import 'package:bizorganizer/signin.dart';
+import 'package:bizorganizer/splash_screen.dart'; // Import the new splash screen
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
+import 'package:flutter_spinkit/flutter_spinkit.dart'; // Keep for now, might be used by GlobalLoadingIndicator if not removed
 import 'package:provider/provider.dart';
-
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Keep for AuthState if needed elsewhere, or supabase instance
 
 Future<void> main() async {
   await Supabase.initialize(
@@ -99,32 +99,8 @@ class MyApp extends StatelessWidget {
       ),
       themeMode: ThemeMode.dark,
       debugShowCheckedModeBanner: false,
-      home:
-          // Dashboard()
-          StreamBuilder<AuthState>(
-        stream: supabase.auth.onAuthStateChange,
-        builder: (context, snapshot) {
-          // Waiting for the initial auth state to load
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Container(
-              color: Colors.black.withOpacity(0.5),
-              child: const Center(
-                child: SpinKitSquareCircle(
-                  color: Colors.blue,
-                ),
-              ),
-            );
-          }
-
-          // Checking if a user session is present
-          final session = snapshot.data?.session;
-          if (session != null) {
-            return Dashboard(); // User is authenticated
-          } else {
-            return SignInScreen(); // No user session, redirect to SignIn
-          }
-        },
-      ),
+      home: const BizSplashScreen(), // Set BizSplashScreen as the initial screen
+      // The StreamBuilder logic for auth is now handled by AuthHandlerScreen after the splash.
     );
   }
 }
