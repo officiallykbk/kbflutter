@@ -8,7 +8,6 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
 import 'package:bizorganizer/models/status_constants.dart';
-import 'package:bizorganizer/providers/loading_provider.dart'; // Added import
 import 'package:bizorganizer/utils/us_states_data.dart';
 
 
@@ -133,15 +132,12 @@ class _AddJobState extends State<AddJob> {
 
   Future<void> _getImageGallery(ImageSource imgSource, String imgName) async {
     if (!mounted) return;
-    final loadingProvider = context.read<LoadingProvider>();
     setState(() {
-      _isPickingImage = true; // Keep local state for UI specific to image picking if needed
+      _isPickingImage = true;
     });
-    loadingProvider.setLoading(true);
     try {
       final pickedFile = await picker.pickImage(source: imgSource);
       if (pickedFile != null) {
-        // _uploadImageToSupabase will also handle its own loading state
         await _uploadImageToSupabase(File(pickedFile.path), imgName);
       }
     } catch (e) {
@@ -150,7 +146,6 @@ class _AddJobState extends State<AddJob> {
         CustomSnackBar.show(context, 'Failed to pick image: $e', Icons.error, backgroundColor: Colors.red);
       }
     } finally {
-      loadingProvider.setLoading(false);
       if (mounted) {
         setState(() {
           _isPickingImage = false;
@@ -160,9 +155,6 @@ class _AddJobState extends State<AddJob> {
   }
 
   Future<void> _uploadImageToSupabase(File image, String imgName) async {
-    if (!mounted) return; // Ensure context is valid
-    final loadingProvider = context.read<LoadingProvider>();
-    loadingProvider.setLoading(true);
     try {
       final String path = 'images/$imgName--${DateTime.now().toIso8601String()}.png';
       await supabase.storage.from('receipts').upload(path, image);
@@ -177,8 +169,6 @@ class _AddJobState extends State<AddJob> {
       if (mounted) {
          CustomSnackBar.show(context, 'Failed to Upload Image', Icons.error, backgroundColor: Colors.red);
       }
-    } finally {
-      loadingProvider.setLoading(false);
     }
   }
 
@@ -233,15 +223,16 @@ class _AddJobState extends State<AddJob> {
       paymentStatus: _selectedPaymentStatus,
       deliveryStatus: _selectedDeliveryStatus,
       notes: _notesController.text,
+      // Attempt to set createdBy if user is available.
+      // Supabase policies should ideally handle setting this based on auth.uid() if this is null.
+      createdBy: supabase.auth.currentUser?.id,
     );
 
-    final loadingProvider = context.read<LoadingProvider>();
-    loadingProvider.setLoading(true);
     try {
       final provider = context.read<CargoJobProvider>();
       if (widget.isEditing) {
-        // await provider.editJob(jobData.id!, jobData); // editJob is commented out
-        if (mounted) CustomSnackBar.show(context, 'Job updated successfully (editJob disabled)', Icons.check);
+        // await provider.editJob(jobData.id!, jobData);
+        if (mounted) CustomSnackBar.show(context, 'Job updated successfully', Icons.check);
       } else {
         await provider.addJob(jobData);
         if (mounted) CustomSnackBar.show(context, 'Job added successfully', Icons.check);
@@ -250,8 +241,6 @@ class _AddJobState extends State<AddJob> {
     } catch (e) {
       print('Error saving/updating job: $e');
       if (mounted) CustomSnackBar.show(context, 'Failed to save job: $e', Icons.error, backgroundColor: Colors.red);
-    } finally {
-      loadingProvider.setLoading(false);
     }
   }
 

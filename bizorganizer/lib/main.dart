@@ -1,10 +1,9 @@
-import 'package:bizorganizer/dashboard.dart'; // Keep for AuthHandlerScreen
+import 'package:bizorganizer/dashboard.dart';
 import 'package:bizorganizer/providers/loading_provider.dart';
 import 'package:bizorganizer/providers/orders_providers.dart';
-import 'package:bizorganizer/signin.dart'; // Keep for AuthHandlerScreen
-import 'package:bizorganizer/splash_screen.dart'; // Import splash_screen.dart
+import 'package:bizorganizer/signin.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart'; // Keep for GlobalLoadingIndicator if used, or remove if splash replaces all initial loading
+import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:provider/provider.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -16,15 +15,8 @@ Future<void> main() async {
   );
         
   runApp(MultiProvider(providers: [
-    ChangeNotifierProvider(create: (_) => LoadingProvider()), // LoadingProvider first
-    ChangeNotifierProvider( // Then CargoJobProvider
-      create: (context) {
-        final loadingProvider = Provider.of<LoadingProvider>(context, listen: false);
-        final cargoJobProvider = CargoJobProvider(loadingProvider);
-        // cargoJobProvider.fetchJobsData(); // Call fetchJobsData here
-        return cargoJobProvider;
-      },
-    ),
+    ChangeNotifierProvider(create: (_) => CargoJobProvider()..fetchJobsData()), // Updated Provider
+    ChangeNotifierProvider(create: (_) => LoadingProvider())
   ], child: const MyApp()));
 }
 
@@ -107,52 +99,32 @@ class MyApp extends StatelessWidget {
       ),
       themeMode: ThemeMode.dark,
       debugShowCheckedModeBanner: false,
-      home: const BizSplashScreen(), // Set BizSplashScreen as home
+      home:
+          // Dashboard()
+          StreamBuilder<AuthState>(
+        stream: supabase.auth.onAuthStateChange,
+        builder: (context, snapshot) {
+          // Waiting for the initial auth state to load
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Container(
+              color: Colors.black.withOpacity(0.5),
+              child: const Center(
+                child: SpinKitSquareCircle(
+                  color: Colors.blue,
+                ),
+              ),
+            );
+          }
+
+          // Checking if a user session is present
+          final session = snapshot.data?.session;
+          if (session != null) {
+            return Dashboard(); // User is authenticated
+          } else {
+            return SignInScreen(); // No user session, redirect to SignIn
+          }
+        },
+      ),
     );
   }
 }
-
-// The GlobalLoadingIndicator logic is now separate.
-// If it needs to overlay the entire app (post-splash),
-// the structure of how BizSplashScreen navigates to AuthHandlerScreen,
-// and then to Dashboard/SignInScreen needs to be such that MaterialApp's builder
-// or a root widget wraps the authenticated app part with the Stack and Consumer.
-// For now, per instruction, home is just BizSplashScreen.
-// The existing Stack in main.dart for GlobalLoadingIndicator has been removed by this change.
-// To keep GlobalLoadingIndicator, it should be added to the screens loaded *after* the splash.
-// Or, MaterialApp's `builder` property could be used.
-
-// Let's assume the Stack for GlobalLoadingIndicator should remain at MaterialApp level.
-// This means BizSplashScreen should not be `home`, but part of the Stack.
-// Re-interpreting: The home *content* (StreamBuilder) is replaced by BizSplashScreen,
-// but the Stack for GlobalLoadingIndicator remains.
-
-/*
-Alternative interpretation based on keeping the GlobalLoadingIndicator Stack:
-      home: Stack(
-        children: [
-          const BizSplashScreen(), // BizSplashScreen replaces the StreamBuilder
-          Consumer<LoadingProvider>(
-            builder: (context, loadingProvider, child) {
-              return loadingProvider.isLoading
-                  ? GlobalLoadingIndicator(loadState: true)
-                  : SizedBox.shrink();
-            },
-          ),
-        ],
-      ),
-*/
-// The most direct interpretation of "change the home property ... to be const BizSplashScreen()"
-// is what was initially done. If the GlobalLoadingIndicator is meant to persist over everything
-// including the splash screen (which is unusual), or over the app *after* the splash,
-// then the structure in main.dart's build or the navigation from AuthHandlerScreen needs adjustment.
-
-// Given the code in splash_screen.dart, AuthHandlerScreen itself returns a Scaffold,
-// which means it's intended to be a full screen.
-// The GlobalLoadingIndicator should ideally be part of the MaterialApp's builder
-// or on top of the Navigator.
-
-// For this step, I will stick to the direct instruction: home: const BizSplashScreen();
-// This means the GlobalLoadingIndicator which was previously in the Stack in main.dart's home
-// is removed. If it needs to be re-added, it would typically be inside the Dashboard and SignInScreen,
-// or using a builder in MaterialApp.

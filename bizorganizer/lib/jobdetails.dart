@@ -8,7 +8,6 @@ import 'package:intl/intl.dart';
 import 'package:bizorganizer/models/job_history_entry.dart';
 import 'package:bizorganizer/models/cargo_job.dart';
 import 'package:bizorganizer/models/status_constants.dart';
-import 'package:bizorganizer/providers/loading_provider.dart'; // Added import
 import 'package:bizorganizer/utils/us_states_data.dart'; // Added import
 
 class JobDetails extends StatefulWidget {
@@ -71,20 +70,15 @@ class _JobDetailsState extends State<JobDetails> {
 
   Future<void> _fetchHistory() async {
     if (!mounted) return;
-    final loadingProvider = context.read<LoadingProvider>();
-    loadingProvider.setLoading(true);
-    // setState(() { // Keep local _isLoadingHistory if needed for specific UI elements
-    //   _isLoadingHistory = true;
-    // });
+    setState(() {
+      _isLoadingHistory = true;
+    });
     final jobId = widget.job['id'] as String?;
     if (jobId == null) {
-      if (mounted) { // Ensure mounted check before setState
-        setState(() {
-          _isLoadingHistory = false; // Still manage local state if kept
-        });
-      }
-      loadingProvider.setLoading(false); // Ensure global loader is turned off
-      print("Job ID is null, cannot fetch history.");
+      setState(() {
+        _isLoadingHistory = false;
+        print("Job ID is null, cannot fetch history.");
+      });
       return;
     }
     try {
@@ -93,23 +87,18 @@ class _JobDetailsState extends State<JobDetails> {
       if (mounted) {
         setState(() {
           _historyEntries = entries;
-          // _isLoadingHistory = false; // Manage local state if kept
+          _isLoadingHistory = false;
         });
       }
     } catch (e) {
       print("Error fetching job history in JobDetails: $e");
       if (mounted) {
-        // setState(() { // Manage local state if kept
-        //   _isLoadingHistory = false;
-        // });
+        setState(() {
+          _isLoadingHistory = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error fetching job history: $e')),
         );
-      }
-    } finally {
-      loadingProvider.setLoading(false);
-      if (mounted) { // Ensure mounted check before setState for local loader
-         setState(() { _isLoadingHistory = false; }); // Update local loader here
       }
     }
   }
@@ -305,9 +294,8 @@ class _JobDetailsState extends State<JobDetails> {
                       selected: currentActualDeliveryStatus ==
                           statusStr.toLowerCase(),
                       onSelected: (selected) async {
+                        // Made async
                         if (selected) {
-                          final loadingProvider = context.read<LoadingProvider>();
-                          loadingProvider.setLoading(true);
                           try {
                             await jobProvider.updateJobDeliveryStatus(
                                 cargoJobInstance.id!.toString(), statusStr);
@@ -317,7 +305,7 @@ class _JobDetailsState extends State<JobDetails> {
                                 currentActualDeliveryStatus =
                                     statusStr.toLowerCase();
                               });
-                              _fetchHistory();
+                              _fetchHistory(); // Added history refresh
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                     content: Text(
@@ -339,8 +327,6 @@ class _JobDetailsState extends State<JobDetails> {
                                     prevDelivStatus.toLowerCase();
                               });
                             }
-                          } finally {
-                            loadingProvider.setLoading(false);
                           }
                         }
                       },
@@ -381,33 +367,26 @@ class _JobDetailsState extends State<JobDetails> {
                             statusStr.toLowerCase(),
                         onSelected: (selected) async {
                           if (selected) {
-                            final loadingProvider = context.read<LoadingProvider>();
-                            loadingProvider.setLoading(true);
                             try {
-                              // It's better to set state after the async call if it might fail
-                              // and you need to revert. However, for immediate UI feedback, this is okay.
-                              // String oldPaymentStatus = currentActualPaymentStatus; // Keep old status for revert
-                              if (mounted) { // Check mounted before setState
-                                  prevPayStatus = currentActualPaymentStatus;
-                                  setState(() {
-                                    currentActualPaymentStatus = statusStr.toLowerCase();
-                                  });
+                              if (mounted) {
+                                prevPayStatus = currentActualPaymentStatus;
+                                setState(() {
+                                  currentActualPaymentStatus =
+                                      statusStr.toLowerCase();
+                                });
                               }
-
                               await jobProvider.updateJobPaymentStatus(
                                   cargoJobInstance.id!.toString(),
-                                  statusStr);
-                              _fetchHistory();
-                              if(mounted){ // Check mounted before ScaffoldMessenger
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text(
-                                          'Payment status updated to ${statusStr.toUpperCase()}'),
-                                      backgroundColor: Colors.green),
-                                );
-                              }
+                                  statusStr); // Fixed ID type
+                              _fetchHistory(); // Added history refresh
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(
+                                        'Payment status updated to ${statusStr.toUpperCase()}'),
+                                    backgroundColor: Colors.green),
+                              );
                             } catch (e) {
-                              if (mounted) { // Check mounted before ScaffoldMessenger and setState
+                              if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
@@ -415,12 +394,8 @@ class _JobDetailsState extends State<JobDetails> {
                                     backgroundColor: Colors.red,
                                   ),
                                 );
-                                setState(() { // Revert on error
-                                   currentActualPaymentStatus = prevPayStatus;
-                                });
+                                currentActualPaymentStatus = prevPayStatus;
                               }
-                            } finally {
-                              loadingProvider.setLoading(false);
                             }
                           }
                         },
@@ -510,117 +485,108 @@ class _JobDetailsState extends State<JobDetails> {
   }
 
   Future<void> _confirmDeleteJob() async {
-    final TextEditingController deleteConfirmController =
-        TextEditingController();
-    final GlobalKey<FormFieldState<String>> confirmKey =
-        GlobalKey<FormFieldState<String>>(); // For validation
-    // isConfirmed is managed locally by StatefulBuilders or by checking controller directly.
+    final TextEditingController deleteConfirmController = TextEditingController();
+    final GlobalKey<FormFieldState<String>> confirmKey = GlobalKey<FormFieldState<String>>();
 
     return showDialog<void>(
       context: context,
       barrierDismissible: false, // User must tap button!
       builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          title: const Text('Confirm Deletion'),
-          content: StatefulBuilder(// Use StatefulBuilder to update button state
-              builder: (BuildContext context, StateSetter setState) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                const Text(
-                    "To delete this job, please type 'delete this' in the box below."),
-                const SizedBox(height: 16),
-                TextFormField(
-                  key: confirmKey,
-                  controller: deleteConfirmController,
-                  decoration: const InputDecoration(
-                    labelText: "Type 'delete this'",
-                    border: OutlineInputBorder(),
+        // Use a single StatefulBuilder for the dialog's interactive parts
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            final bool isButtonEnabled = deleteConfirmController.text.trim().toLowerCase() == 'delete this';
+
+            return AlertDialog(
+              title: const Text('Confirm Deletion'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  const Text("To delete this job, please type 'delete this' in the box below."),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    key: confirmKey,
+                    controller: deleteConfirmController,
+                    decoration: const InputDecoration(
+                      labelText: "Type 'delete this'",
+                      border: OutlineInputBorder(),
+                    ),
+                    autofocus: true,
+                    onChanged: (text) {
+                      // This setState will rebuild the AlertDialog via the common StatefulBuilder
+                      setState(() {});
+                      // Optionally, trigger validation if you want live error messages
+                      confirmKey.currentState?.validate();
+                    },
+                    validator: (value) {
+                      if (value?.trim().toLowerCase() != 'delete this') {
+                        return "Text does not match 'delete this'.";
+                      }
+                      return null;
+                    },
+                    // autovalidateMode: AutovalidateMode.onUserInteraction, // Alternative to manual validate
                   ),
-                  autofocus: true,
-                  onChanged: (text) {
-                    // This setState is for the StatefulBuilder around the Column (dialog content)
-                    // It ensures the TextFormField validator is re-run if needed
-                    // and the button's StatefulBuilder will pick up the controller's new text.
-                    setState(() {});
-                    // Also explicitly validate to show error message dynamically
-                    confirmKey.currentState?.validate();
-                  },
-                  validator: (value) {
-                    if (value?.toLowerCase().trim() != 'delete this') {
-                      return "Text does not match.";
-                    }
-                    return null;
+                ],
+              ),
+              actions: <Widget>[
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
                   },
                 ),
-              ],
-            );
-          }),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-            ),
-            StatefulBuilder(// To enable/disable the confirm button
-                builder: (BuildContext context, StateSetter setState) {
-              bool currentButtonEnabledState =
-                  deleteConfirmController.text.trim() == 'delete this';
+                TextButton(
+                  child: Text('Confirm Delete',
+                      style: TextStyle(
+                          color: isButtonEnabled
+                              ? const Color.fromARGB(255, 255, 82, 82) // More prominent red for enabled
+                              : Theme.of(context).disabledColor)), // Use theme's disabled color
+                  onPressed: isButtonEnabled
+                      ? () async {
+                          final String? jobId = widget.job['id'] as String?;
+                          if (jobId != null) {
+                            try {
+                              final provider = Provider.of<CargoJobProvider>(
+                                  this.context, // Refers to _JobDetailsState's context
+                                  listen: false);
+                              await provider.removeJob(jobId);
 
-              return TextButton(
-                child: Text('Confirm Delete',
-                    style: TextStyle(
-                        color: currentButtonEnabledState
-                            ? Color.fromARGB(255, 255, 82, 82)
-                            : Color.fromARGB(125, 255, 82, 82))),
-                onPressed: currentButtonEnabledState
-                    ? () async {
-                        final String? jobId = widget.job['id'] as String?;
-                        if (jobId != null) {
-                          final loadingProvider = Provider.of<LoadingProvider>(this.context, listen: false);
-                          loadingProvider.setLoading(true);
-                          try {
-                            final provider = Provider.of<CargoJobProvider>(this.context, listen: false);
-                            await provider.removeJob(jobId);
-
+                              Navigator.of(dialogContext).pop(); // Close the dialog
+                              if (mounted) { // Check mount status of _JobDetailsState
+                                Navigator.of(this.context).pop(true); // Pop JobDetails screen
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Job deleted successfully'),
+                                      backgroundColor: Colors.green),
+                                );
+                              }
+                            } catch (e) {
+                              Navigator.of(dialogContext).pop(); // Close the dialog
+                               if (mounted) { // Check mount status of _JobDetailsState
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  SnackBar(
+                                      content: Text('Error deleting job: $e'),
+                                      backgroundColor: Colors.red),
+                                );
+                              }
+                            }
+                          } else {
                             Navigator.of(dialogContext).pop(); // Close the dialog
-                            if (mounted) {
-                              Navigator.of(this.context).pop(true);
+                            if (mounted) { // Check mount status of _JobDetailsState
                               ScaffoldMessenger.of(this.context).showSnackBar(
                                 const SnackBar(
-                                    content: Text('Job deleted successfully'),
-                                    backgroundColor: Colors.green),
-                              );
-                            }
-                          } catch (e) {
-                            Navigator.of(dialogContext).pop(); // Close the dialog
-                            if (mounted) {
-                              ScaffoldMessenger.of(this.context).showSnackBar(
-                                SnackBar(
-                                    content: Text('Error deleting job: $e'),
+                                    content: Text('Error: Job ID not found.'),
                                     backgroundColor: Colors.red),
                               );
                             }
-                          } finally {
-                             loadingProvider.setLoading(false);
-                          }
-                        } else {
-                          Navigator.of(dialogContext).pop();
-                          if (mounted) {
-                            ScaffoldMessenger.of(this.context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('Error: Job ID not found.'),
-                                  backgroundColor: Colors.red),
-                            );
                           }
                         }
-                      }
-                    : null, // Disable button if text doesn't match
-              );
-            }),
-          ],
+                      : null, // Button is disabled if condition is not met
+                ),
+              ],
+            );
+          }
         );
       },
     );
